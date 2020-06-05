@@ -1,0 +1,49 @@
+---
+title: "LysandiTolfraedi"
+author: "Birna"
+date: "6/5/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r}
+library(tidyverse)
+library(tinytex)
+```
+
+Hérna er mynd:
+
+  1. Hún lýsir þessu.
+  
+  2. Og þessu
+
+Og svo framvegis
+
+Itemize
+
+  1. Itemize
+
+  
+  2. Annað item
+
+```{r message=TRUE}
+fullAnswerData <- read_csv('Data/fullAnswerData.csv')
+```
+```{r}
+talningSvara <- ggplot(fullAnswerData, aes(x=numQ, fill=correct=="1")) + geom_bar() + labs(y="Fjöldi svara", x="Fjöldi svarmögueleika", fill="Rétt/Rangt")
+talningSvara
+stakarSpurnignar <- unique(fullAnswerData$questionId)
+#Er fjöldi svara í réttu hlutfalli við fjölda spurninga í hvert skipti? 
+```
+
+$$
+f(x) = \sin(x)
+$$
+\begin{equation}
+f(x) = \sin(x)
+\end{equation}
+
+\begin{align}
+f(x) &= x^2 \\
+&= x \cdot x
+\end{align}

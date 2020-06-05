@@ -43,7 +43,7 @@ lectureStudentSetting<-tbl(twDb,"lectureStudentSetting")
 stdevs <- lectureStudentSetting%>%group_by(key)%>%summarise(stdev=sd(value,na.rm=T),stdevlog=sd(log2(value),na.rm=T))
 
 #dir, qName(Qgen-ið), hash, numQ, notaType
-hashes<-read.csv('bighashfile.wide.txt',sep=" ",col.names =c("dir","qName","hash","hash2","hash3","numQ","notaType"),na.strings = ".")
+hashes<-read.csv('Data/bighashfile.wide.txt',sep=" ",col.names =c("dir","qName","hash","hash2","hash3","numQ","notaType"),na.strings = ".")
 hashes <- filter(hashes, notaType == "noNOTA")
 
 plonePath<-unique(paste(hashes$dir,hashes$qName,sep=""))
@@ -127,7 +127,7 @@ myAnswer
 myAnswer1 <- myAnswer[match(hashes1$qName ,myAnswer$myAnswerQgen), ]
 myAnswer1$numQ <- as.integer(myAnswer1$numQ)
 myAnswer1
-
+write_csv(x = fullAnswerData,path = 'Data/fullAnswerData.csv')
 
 ```
 
@@ -219,7 +219,7 @@ ggplot(spurningaTaflaDF , aes(x = Svarmoguleikar, y = Hlutfallslega, group=Svarm
 #Skoða einstaka nemendur 
 nemendaTafla <- group_by(fullAnswerData, studentId) %>% summarise('FjoldiSvaradraSpurninga'=n(), 'Hve oft rétt'=sum(correct), 'Heildareinkunn'=sum(correct)/n(), 'Heildarfjöldi svarmöguleika'= sum(numQ), 'Medaltal'=sum(numQ)/n())
 kable(nemendaTafla) %>% kable_styling(bootstrap_options = c("striped", "hover"))
-#view(nemendaTafla)
+view(nemendaTafla)
 
 #Filtera út þá nemedur sem svöruðu færri en 7 spurningum 
 nemendaTaflaDF <- as.data.frame(nemendaTafla)%>%filter(FjoldiSvaradraSpurninga > 6)
