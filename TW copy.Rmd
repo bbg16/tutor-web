@@ -1,0 +1,237 @@
+---
+title: "TW"
+author: "Birna"
+date: "5/25/2020"
+output: html_document
+---
+```{r message=FALSE}
+
+library(dbplyr)
+library(dplyr)
+library(RMySQL)
+library(tidyr)
+library(MASS)
+library(tidyverse)
+library(kableExtra)
+
+
+```
+
+```{r}
+#Aðgangurinn
+twDb<-src_mysql("tw_quizdb", host = "127.0.0.1", port = 3306, user = "bbg16", password = "ATldnqd6eohr")
+
+#answerId, lectureId, stundentId, chosenAnswer, grade(NA), correct, timeStart, timeEnd, practice, coinsAwarded
+answer <- tbl(twDb, "answer")
+
+#lectureId, plonePath, hostId, lastUpdate, currentVersion, 
+lecture<-tbl(twDb,"lecture")
+
+#questionId, plonePath, timesAnswered, timesCorrect, lastUpdate, active, qnType, qnType, correctChoices, incorrectChoices, qnType, correctChoices, incorrectChoices, title
+question<-tbl(twDb,"question")
+
+#hostId, fqdn, hostKey, comment
+host<-tbl(twDb,"host")
+
+#coinAwardId, studentId, amount, walletId, awardTime, txId
+coinAward<-tbl(twDb,"coinAward")
+
+#lectureId, lectureVersion, studentId, key, creationDate, value(hér er value eitthvað flippuð tala)
+lectureStudentSetting<-tbl(twDb,"lectureStudentSetting")
+
+#key, stdev, stdevlog
+stdevs <- lectureStudentSetting%>%group_by(key)%>%summarise(stdev=sd(value,na.rm=T),stdevlog=sd(log2(value),na.rm=T))
+
+#dir, qName(Qgen-ið), hash, numQ, notaType
+hashes<-read.csv('bighashfile.wide.txt',sep=" ",col.names =c("dir","qName","hash","hash2","hash3","numQ","notaType"),na.strings = ".")
+hashes <- filter(hashes, notaType == "noNOTA")
+
+plonePath<-unique(paste(hashes$dir,hashes$qName,sep=""))
+plonePath<-as.data.frame(plonePath)
+hashes$plonePath<-paste(hashes$dir,hashes$qName,sep="")
+myQuestions <- left_join(plonePath,as.data.frame(question))
+
+#answerId, lectureId, studentId, questionId, chosenAnswer, grade, correct, timeStart, timeEnd, practice, coinsAwarded, lectureVersion
+answerRed <- answer%>%filter(timeStart>"2020-01-01 00:01:01")
+answerRed <- as.data.frame(answerRed)
+
+#answerId, lectureId, stundentId, questionId, chosenAnswer, grade, correct, timeStart, timeEnd, practice, coinsAwarded, lectureVersion, plonePath, timesAnswered, timesCorrect, lastUpdate, active, qnType, correctChoices, incorrectChoices, title(inniheldurQgen)
+myAnswer <- inner_join(answerRed,myQuestions)
+myAnswer <- as.data.frame(myAnswer)
+#
+# myAnswer should now contain all answers to just the questions listed in the hash file
+#inner_join(myAnswer,hashes)->fullAnswerData # ERROR: AOTA+ multiplies the dimension!!!
+fullAnswerData <- inner_join(myAnswer,hashes)->fullAnswerData
+#
+# fullAnswerData should now contain all answers to just the questions listed in the hash file, plus additional info
+#
+
+
+
+
+#lectureId, lectureVersion, key, creationDate, value
+lectureGlobalSetting<-tbl(twDb,"lectureGlobalSetting")
+
+#lectureId, questionId
+lectureQuestions<-tbl(twDb,"lectureQuestions")
+
+#lectureId, studentId, key, value
+lectureSetting<-tbl(twDb,"lectureSetting")
+
+
+#studentId, plonePath, hidden, 
+subscription<-as.data.frame(tbl(twDb,"subscription"))
+
+#lectureId, lectureVersion, studentId, key, creationDate, value
+lectureStudentSetting<-tbl(twDb,"lectureStudentSetting")
+
+#plonePath í LoT spurningar
+
+```
+
+```{r}
+cache=F
+
+#Sigta noNOTA út úr hashes
+hashes <- filter(hashes, notaType == "noNOTA")
+
+hashes
+myQuestions #title inni heldur Qgen
+
+#set myQuestions á gagnaramma form
+myQuestionsDF <- as.data.frame(myQuestions)
+
+#Bý til vigur úr myQuestions sem inniheldur Qgen-in úr title
+myQuestionsQgen <- c(word(myQuestionsDF$title,1, sep = (" ")))
+
+#Finn sniðmengi Qgen-a í myQuestionQgen og hashes (þetta eru öll þau Qgen sem ég á að skoða)
+snidmengi_Qgen <- as.data.frame(intersect(myQuestionsQgen,hashes$qName))
+
+#Nú er ég komin með öll þau Qgen sem ég vil skoða. Vil þá filtera þau út úr hashes
+hashes1 <- hashes[match(snidmengi_Qgen$`intersect(myQuestionsQgen, hashes$qName)`,hashes$qName), ]
+view(hashes1)
+
+myAnswerDF <- as.data.frame(myAnswer)
+myAnswerDF%>%group_by(incorrectChoices)%>%mutate(numQ=(ncol(incorrectChoices)))
+myAnswerDF<- mutate(myAnswerDF, numQ=recode_factor(incorrectChoices, "[1]"="2", "[1, 2]"="3","[1, 2, 3]"="4", "[1, 2, 3, 4]"="5", "[1, 2, 3, 4, 5]"="6", "[1, 2, 3, 4, 5, 6]"="7", "[1, 2, 3, 4, 5, 6, 7]"="8") )
+myAnswerDF
+
+#Öll Qgenin úr myAnswer töflunni
+myAnswerQgen <- c(word(myAnswerDF$title,1, sep = " "))
+
+myAnswer <- cbind(myAnswerDF, myAnswerQgen)
+myAnswer
+
+#answerId, lectureId, studentId, questionId, chosenAnswer, grade, correct, timeStart, timeEnd, practice
+#Einhver vöntun í þessari töflu hjá mér.... 
+myAnswer1 <- myAnswer[match(hashes1$qName ,myAnswer$myAnswerQgen), ]
+myAnswer1$numQ <- as.integer(myAnswer1$numQ)
+myAnswer1
+
+
+```
+
+```{r}
+#Tel úr hashes hve margar spurningar eru af hverjum fjölda valmöguleika
+talningSpurninga <- ggplot(hashes1, aes(x=numQ)) + geom_bar() + labs(y="Fjöldi spurninga", x="Fjöldi svarmögueleika")
+talningSpurninga
+```
+```{r}
+talningSvara <- ggplot(fullAnswerData, aes(x=numQ, fill=correct=="1")) + geom_bar() + labs(y="Fjöldi svara", x="Fjöldi svarmögueleika", fill="Correct/Incorrect")
+talningSvara
+stakarSpurnignar <- unique(fullAnswerData$questionId)
+#Er fjöldi svara í réttu hlutfalli við fjölda spurninga í hvert skipti? 
+
+#Overall rétt svör á móti heildarsvörum 
+x <- group_by(fullAnswerData)%>%summarise('Hlutfall réttra svara í heildina' = (sum(fullAnswerData$correct)/n()))
+y <- sum(fullAnswerData$correct/nrow(fullAnswerData))                         
+                                        
+```
+
+
+```{r}
+#Hér skoða ég spurningar með 2 svarmöguleika
+#hlutfall réttra svara: 
+h2 <- filter(fullAnswerData, numQ == "2")
+x2 <- sum(h2$correct/nrow(h2)) 
+```
+
+```{r}
+#Hér skoða ég spurningar með 3 svarmöguleika
+h3 <- filter(fullAnswerData, numQ == "3")
+x3 <- sum(h3$correct/nrow(h3))
+```
+
+```{r}
+#Hér skoða ég spurningar með 4 svarmöguleika
+h4 <- filter(fullAnswerData, numQ == "4")
+x4 <- sum(h4$correct/nrow(h4))
+```
+
+```{r}
+#Hér skoða ég spurningar með 5 svarmöguleika
+h5 <- filter(fullAnswerData, numQ == "5")
+x5 <- sum(h5$correct/nrow(h5))
+```
+
+```{r}
+#Hér skoða ég spurningar með 6 svarmöguleika
+h6 <- filter(fullAnswerData, numQ == "6")
+x6 <- sum(h6$correct/nrow(h6))
+```
+```{r}
+#Hér skoða ég spurningar með 7 svarmöguleika
+h7 <- filter(fullAnswerData, numQ == "7")
+x7 <- sum(h7$correct/nrow(h7))
+```
+```{r}
+#Hér skoða ég spurningar með 8 svarmöguleika
+h8 <- filter(fullAnswerData, numQ == "8")
+x8 <- sum(h8$correct/nrow(h8))
+```
+```{r}
+einstakarSpurnignar <- group_by(myAnswer1, numQ)%>%summarise('Fjöldi spurninga(engin eins)'=n())
+
+svarmoguleikaTafla <- group_by(fullAnswerData, numQ) %>% summarise('Fjöldi svara'=n(), 'Fjöldi réttra svara'=sum(correct), 'Hlutfall réttra svara'=sum(correct)/n(), 'Rétt svör á móti réttum overall'=sum(correct)/n()/y)
+kable(inner_join(einstakarSpurnignar,svarmoguleikaTafla)) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+```{r}
+hlutfallRettra <- group_by(fullAnswerData, numQ) %>% summarise('hlutfall1'=sum(correct)/n(), 'hlutfall2'=sum(correct)/n()/y)
+ggplot(hlutfallRettra, aes(x=numQ, y=hlutfall1)) + geom_point() + geom_smooth(method = 'lm', color="cyan") + labs(x="Fjöldi svarmöguleika", y="Hlutfall réttra svara")
+```
+```{r}
+ggplot(hlutfallRettra, aes(x=numQ, y=hlutfall2)) + geom_point() + geom_smooth(method = 'lm', color="cyan") + labs(x="Fjöldi svarmöguleika", y="Rétt svör á móti réttum overall")
+```
+```{r}
+#Skoða einstaka spurningar hvort sumar séu einstaklega erfiðar
+spurningaTafla <- group_by(fullAnswerData, questionId) %>% summarise('Hve oft svarað'=unique(timesAnswered), 'Hve oft rétt'=unique(timesCorrect),'Hlutfallslega'=unique(timesCorrect)/unique(timesAnswered), 'Svarmoguleikar'=unique(numQ))
+kable(spurningaTafla) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+#view(spurningaTafla)
+
+spurningaTaflaDF <- as.data.frame(spurningaTafla)
+ggplot(spurningaTaflaDF , aes(x = Svarmoguleikar, y = Hlutfallslega, group=Svarmoguleikar)) + geom_boxplot() +labs(x = "Meðal fjöldi svarmöguleika", y = "Heildareinkunn") + labs(title = "Samband fjölda svarmöguleika og einkunna") + geom_smooth(method = 'lm', color="cyan", aes(group=1))
+
+#lm(spurningaTaflaDF)
+```
+
+```{r}
+#Skoða einstaka nemendur 
+nemendaTafla <- group_by(fullAnswerData, studentId) %>% summarise('FjoldiSvaradraSpurninga'=n(), 'Hve oft rétt'=sum(correct), 'Heildareinkunn'=sum(correct)/n(), 'Heildarfjöldi svarmöguleika'= sum(numQ), 'Medaltal'=sum(numQ)/n())
+kable(nemendaTafla) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+#view(nemendaTafla)
+
+#Filtera út þá nemedur sem svöruðu færri en 7 spurningum 
+nemendaTaflaDF <- as.data.frame(nemendaTafla)%>%filter(FjoldiSvaradraSpurninga > 6)
+
+ggplot(nemendaTaflaDF , aes(x = Medaltal, y = Heildareinkunn)) + geom_point() +labs(x = "Meðal fjöldi svarmöguleika", y = "Heildareinkunn") + labs(title = "Samband fjölda svarmöguleika og einkunna") + geom_smooth(method = 'lm', color="cyan")
+
+```
+```{r}
+#spurning um að smækka rammann
+summary(fullAnswerData)
+#fit1 <- lm(numQ~timeStart,fullAnswerData)
+```
+
+
+
