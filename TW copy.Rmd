@@ -217,7 +217,7 @@ kable(spurningaTafla) %>% kable_styling(bootstrap_options = c("striped", "hover"
 spurningaTaflaDF <- as.data.frame(spurningaTafla)
 ggplot(spurningaTaflaDF , aes(x = Svarmoguleikar, y = Hlutfallslega, group=Svarmoguleikar)) + geom_boxplot() +labs(x = "Meðal fjöldi svarmöguleika", y = "Heildareinkunn") + labs(title = "Samband fjölda svarmöguleika og einkunna") + geom_smooth(method = 'lm', color="cyan", aes(group=1))
 
-#lm(spurningaTaflaDF)
+lm(spurningaTaflaDF)
 ```
 
 ```{r}
