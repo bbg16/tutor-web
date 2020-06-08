@@ -5,7 +5,6 @@ date: "5/25/2020"
 output: html_document
 ---
 ```{r message=FALSE}
-
 library(dbplyr)
 library(dplyr)
 library(RMySQL)
@@ -13,8 +12,6 @@ library(tidyr)
 library(MASS)
 library(tidyverse)
 library(kableExtra)
-
-
 ```
 
 ```{r}
@@ -36,7 +33,7 @@ host<-tbl(twDb,"host")
 #coinAwardId, studentId, amount, walletId, awardTime, txId
 coinAward<-tbl(twDb,"coinAward")
 
-#lectureId, lectureVersion, studentId, key, creationDate, value(hér er value eitthvað flippuð tala)
+#lectureId, lectureVersion, studentId, key, creationDate, value(hér er value flippuð tala)
 lectureStudentSetting<-tbl(twDb,"lectureStudentSetting")
 
 #key, stdev, stdevlog
@@ -127,17 +124,22 @@ myAnswer
 myAnswer1 <- myAnswer[match(hashes1$qName ,myAnswer$myAnswerQgen), ]
 myAnswer1$numQ <- as.integer(myAnswer1$numQ)
 myAnswer1
+
+fullAnswerData1 <- distinct(fullAnswerData,questionId, .keep_all = T)
 write_csv(x = fullAnswerData,path = 'Data/fullAnswerData.csv')
+write_csv(x = fullAnswerData1,path = 'Data/fullAnswerData1.csv')
+
 
 ```
 
 ```{r}
 #Tel úr hashes hve margar spurningar eru af hverjum fjölda valmöguleika
-talningSpurninga <- ggplot(hashes1, aes(x=numQ)) + geom_bar() + labs(y="Fjöldi spurninga", x="Fjöldi svarmögueleika")
+talningSpurninga <- ggplot(fullAnswerData1, aes(x=numQ)) + geom_bar() + labs(y="Fjöldi spurninga", x="Fjöldi svarmöguleika")
 talningSpurninga
+
 ```
 ```{r}
-talningSvara <- ggplot(fullAnswerData, aes(x=numQ, fill=correct=="1")) + geom_bar() + labs(y="Fjöldi svara", x="Fjöldi svarmögueleika", fill="Correct/Incorrect")
+talningSvara <- ggplot(fullAnswerData, aes(x=numQ, fill=correct=="1")) + geom_bar() + labs(y="Fjöldi svara", x="Fjöldi svarmöguleika", fill="Correct/Incorrect")
 talningSvara
 stakarSpurnignar <- unique(fullAnswerData$questionId)
 #Er fjöldi svara í réttu hlutfalli við fjölda spurninga í hvert skipti? 
@@ -189,13 +191,16 @@ x7 <- sum(h7$correct/nrow(h7))
 h8 <- filter(fullAnswerData, numQ == "8")
 x8 <- sum(h8$correct/nrow(h8))
 ```
+
 ```{r}
-einstakarSpurnignar <- group_by(myAnswer1, numQ)%>%summarise('Fjöldi spurninga(engin eins)'=n())
+einstakarSpurnignar <- group_by(fullAnswerData1, numQ)%>%summarise('Fjöldi spurninga(engin eins)'=n())
 
 svarmoguleikaTafla <- group_by(fullAnswerData, numQ) %>% summarise('Fjöldi svara'=n(), 'Fjöldi réttra svara'=sum(correct), 'Hlutfall réttra svara'=sum(correct)/n(), 'Rétt svör á móti réttum overall'=sum(correct)/n()/y)
+
 kable(inner_join(einstakarSpurnignar,svarmoguleikaTafla)) %>% kable_styling(bootstrap_options = c("striped", "hover"))
 
 ```
+
 ```{r}
 hlutfallRettra <- group_by(fullAnswerData, numQ) %>% summarise('hlutfall1'=sum(correct)/n(), 'hlutfall2'=sum(correct)/n()/y)
 ggplot(hlutfallRettra, aes(x=numQ, y=hlutfall1)) + geom_point() + geom_smooth(method = 'lm', color="cyan") + labs(x="Fjöldi svarmöguleika", y="Hlutfall réttra svara")
@@ -207,8 +212,8 @@ ggplot(hlutfallRettra, aes(x=numQ, y=hlutfall2)) + geom_point() + geom_smooth(me
 #Skoða einstaka spurningar hvort sumar séu einstaklega erfiðar
 spurningaTafla <- group_by(fullAnswerData, questionId) %>% summarise('Hve oft svarað'=unique(timesAnswered), 'Hve oft rétt'=unique(timesCorrect),'Hlutfallslega'=unique(timesCorrect)/unique(timesAnswered), 'Svarmoguleikar'=unique(numQ))
 kable(spurningaTafla) %>% kable_styling(bootstrap_options = c("striped", "hover"))
-#view(spurningaTafla)
-
+```
+```{r}
 spurningaTaflaDF <- as.data.frame(spurningaTafla)
 ggplot(spurningaTaflaDF , aes(x = Svarmoguleikar, y = Hlutfallslega, group=Svarmoguleikar)) + geom_boxplot() +labs(x = "Meðal fjöldi svarmöguleika", y = "Heildareinkunn") + labs(title = "Samband fjölda svarmöguleika og einkunna") + geom_smooth(method = 'lm', color="cyan", aes(group=1))
 
@@ -219,14 +224,18 @@ ggplot(spurningaTaflaDF , aes(x = Svarmoguleikar, y = Hlutfallslega, group=Svarm
 #Skoða einstaka nemendur 
 nemendaTafla <- group_by(fullAnswerData, studentId) %>% summarise('FjoldiSvaradraSpurninga'=n(), 'Hve oft rétt'=sum(correct), 'Heildareinkunn'=sum(correct)/n(), 'Heildarfjöldi svarmöguleika'= sum(numQ), 'Medaltal'=sum(numQ)/n())
 kable(nemendaTafla) %>% kable_styling(bootstrap_options = c("striped", "hover"))
-view(nemendaTafla)
+```
 
+
+```{r}
 #Filtera út þá nemedur sem svöruðu færri en 7 spurningum 
 nemendaTaflaDF <- as.data.frame(nemendaTafla)%>%filter(FjoldiSvaradraSpurninga > 6)
 
 ggplot(nemendaTaflaDF , aes(x = Medaltal, y = Heildareinkunn)) + geom_point() +labs(x = "Meðal fjöldi svarmöguleika", y = "Heildareinkunn") + labs(title = "Samband fjölda svarmöguleika og einkunna") + geom_smooth(method = 'lm', color="cyan")
-
+#Hvað er að frétta hjá nemanda 18567 sem svaraði 10 spurningum og einni rétt
+glm(nemendaTaflaDF)
 ```
+
 ```{r}
 #spurning um að smækka rammann
 summary(fullAnswerData)
