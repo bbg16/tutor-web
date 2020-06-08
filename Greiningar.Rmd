@@ -1,0 +1,12 @@
+---
+title: "Greiningar"
+author: "Birna"
+date: "6/8/2020"
+output: html_document
+---
+```{r}
+fit1 <- glm(correct~factor(numQ)+grade,family = "binomial", data = fullAnswerData)
+summary(fit1)
+#2,2304 log odds fyrir 2 svarmöguleika
+#grade áður en uppfærður
+```
