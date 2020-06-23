@@ -59,10 +59,15 @@ myAnswer <- as.data.frame(myAnswer)
 # myAnswer should now contain all answers to just the questions listed in the hash file
 #inner_join(myAnswer,hashes)->fullAnswerData # ERROR: AOTA+ multiplies the dimension!!!
 fullAnswerData <- inner_join(myAnswer,hashes)->fullAnswerData
+#Breyti correct breytunni í factor (það hefur áhrif á svarmöguleika töfluna í lýsandi tölfræðinni...)
+#fullAnswerData$correct <- as.factor(fullAnswerData$correct)
 #
 # fullAnswerData should now contain all answers to just the questions listed in the hash file, plus additional info
 #
 
+#Eftir að hafa skoðað missmap vil ég fjarlægja dálkana hash2 og hash3 og ugQuestionGuid
+fullAnswerData <- subset(fullAnswerData, select = -c(hash2,hash3,ugQuestionGuid))
+fullAnswerData <- na.omit(fullAnswerData)
 
 
 
@@ -106,7 +111,6 @@ snidmengi_Qgen <- as.data.frame(intersect(myQuestionsQgen,hashes$qName))
 
 #Nú er ég komin með öll þau Qgen sem ég vil skoða. Vil þá filtera þau út úr hashes
 hashes1 <- hashes[match(snidmengi_Qgen$`intersect(myQuestionsQgen, hashes$qName)`,hashes$qName), ]
-view(hashes1)
 
 myAnswerDF <- as.data.frame(myAnswer)
 myAnswerDF%>%group_by(incorrectChoices)%>%mutate(numQ=(ncol(incorrectChoices)))
@@ -132,12 +136,22 @@ write_csv(x = fullAnswerData1,path = 'Data/fullAnswerData1.csv')
 
 ```
 
+
+```{r}
+library(Amelia)
+#Skoða hvort það vanti einhver gögn
+missmap(fullAnswerData, main = "Missing values vs observed")
+#Ætti ég að eyða út þessum 358 AnswerId þar sem chosenAnswer er NA? Búin að gera það núna í klump 1...
+```
+
+
 ```{r}
 #Tel úr hashes hve margar spurningar eru af hverjum fjölda valmöguleika
 talningSpurninga <- ggplot(fullAnswerData1, aes(x=numQ)) + geom_bar() + labs(y="Fjöldi spurninga", x="Fjöldi svarmöguleika")
 talningSpurninga
 
 ```
+
 ```{r}
 talningSvara <- ggplot(fullAnswerData, aes(x=numQ, fill=correct=="1")) + geom_bar() + labs(y="Fjöldi svara", x="Fjöldi svarmöguleika", fill="Correct/Incorrect")
 talningSvara
@@ -242,5 +256,8 @@ summary(fullAnswerData)
 #fit1 <- lm(numQ~timeStart,fullAnswerData)
 ```
 
+```{r}
+xtabs(~correct + numQ, data=fullAnswerData)
+```
 
 

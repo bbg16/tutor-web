@@ -9,6 +9,7 @@ output:
 ```{r}
 library(tidyverse)
 library(tinytex)
+library(kableExtra)
 ```
 
 
@@ -19,7 +20,7 @@ fullAnswerData1 <- read_csv('Data/fullAnswerData1.csv')
 
 ```{r}
 #Tel úr hashes hve margar spurningar eru af hverjum fjölda valmöguleika
-talningSpurninga <- ggplot(fullAnswerData1, aes(x=numQ)) + geom_bar() + labs(y="Fjöldi spurninga", x="Fjöldi svarmöguleika")
+talningSpurninga <- ggplot(fullAnswerData1, aes(x=numQ)) + geom_bar(fill="salmon") + labs(y="Fjöldi spurninga", x="Fjöldi svarmöguleika")
 talningSpurninga
 ```
 
@@ -32,7 +33,7 @@ stakarSpurnignar <- unique(fullAnswerData$questionId)
 ```{r}
 einstakarSpurnignar <- group_by(fullAnswerData1, numQ)%>%summarise('Fjöldi spurninga(engin eins)'=n())
 
-svarmoguleikaTafla <- group_by(fullAnswerData, numQ) %>% summarise('Fjöldi svara'=n(), 'Fjöldi réttra svara'=sum(correct), 'Hlutfall réttra svara'=sum(correct)/n(), 'Rétt svör á móti réttum overall'=sum(correct)/n()/y)
+svarmoguleikaTafla <- group_by(fullAnswerData, numQ) %>% summarise('Fjöldi svara'=n(), 'Fjöldi réttra svara'=sum(correct), 'Hlutfall réttra svara'=sum(correct)/n(), 'Rétt svör á móti réttum overall' = sum(correct)/n()/y)
 
 kable(inner_join(einstakarSpurnignar,svarmoguleikaTafla)) %>% kable_styling(bootstrap_options = c("striped", "hover"))
 ```
@@ -66,6 +67,7 @@ nemendaTafla <- group_by(fullAnswerData, studentId) %>% summarise('FjoldiSvaradr
 kable(nemendaTafla) %>% kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
+
 ```{r}
 #Filtera út þá nemedur sem svöruðu færri en 7 spurningum 
 nemendaTaflaDF <- as.data.frame(nemendaTafla)%>%filter(FjoldiSvaradraSpurninga > 6)
@@ -73,6 +75,12 @@ nemendaTaflaDF <- as.data.frame(nemendaTafla)%>%filter(FjoldiSvaradraSpurninga >
 ggplot(nemendaTaflaDF , aes(x = Medaltal, y = Heildareinkunn)) + geom_point() +labs(x = "Meðal fjöldi svarmöguleika", y = "Heildareinkunn") + labs(title = "Samband fjölda svarmöguleika og einkunna") + geom_smooth(method = 'lm', color="cyan")
 #Hvað er að frétta hjá nemanda 18567 sem svaraði 10 spurningum og einni rétt
 glm(nemendaTaflaDF)
+```
+```{r}
+#Jæja þessi mynd er ekki að gera góða hluti. Ætlaði að gera fína logistic regression línu inn á hana...
+yhat.df <- fullAnswerData %>% mutate(fit = predict(fit1, newdata=fullAnswerData, type='response') ) 
+
+ggplot(fullAnswerData, aes(x=numQ, y=correct)) + geom_count() + scale_size_area() + geom_line(data=yhat.df, aes(y=fit), color='red')
 ```
 
 

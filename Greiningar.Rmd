@@ -5,8 +5,436 @@ date: "6/8/2020"
 output: html_document
 ---
 ```{r}
-fit1 <- glm(correct~factor(numQ)+grade,family = "binomial", data = fullAnswerData)
+library(tidyverse)
+library(aod)
+library(car)
+library(caret)
+library(ggthemes)
+#Get notað þessi theme t.d. tufte/bw
+  theme_set(theme_bw() +
+            theme(panel.border = element_rect('black', fill = NA),
+                  text = element_text(size = 14),
+                  legend.text=element_text(size=14),
+                  axis.text=element_text(size=14),
+                  axis.title = element_text(size = 14),
+                  plot.title = element_text(hjust = 0.5)))
+```
+
+```{r message=FALSE}
+fullAnswerData <- read_csv('Data/fullAnswerData.csv')
+fullAnswerData1 <- read_csv('Data/fullAnswerData1.csv')
+```
+
+##Hér skoða ég fit1
+
+```{r}
+fit1 <- glm(correct~factor(numQ),family = "binomial", data = fullAnswerData)
 summary(fit1)
+#2,2304 eru log odds fyrir 2 svarmöguleika
+
+#Finn öryggisbil með profiled log likelihood
+confint(fit1)
+#Finn hér öryggisbil bara byggð á std error
+confint.default(fit1)
+#Þau eru nokkuð svipuð
+```
+
+
+```{r}
+#Framkvæmi wald test -> Lesa meira um wald test - prófar overall effect of the correct variable
+wald.test(b = coef(fit1), Sigma = vcov(fit1), Terms = 1:7)
+#The chi-squared test statistic of 25692.3, with 7 degrees of freedom is associated with a p-value of 0.0. 
+#Hvað merkir að fá 0.0, hefði haldið að það væri significant en er það svo significant að það þarf ekki fleiri aukastafi?? 
+#Ætti ég frekar að hafa Terms= 2:7 til að hafa ekki interceptið sem er numQ=2? Þá fæ ég X2=233.6;df=6 og P gildið er enn 0.0
+
+#Hér er ég svo bara að skoða hvort það sé munur á numQ=5 og numQ=6.
+l <- cbind(0, 0, 0, 1, -1, 0, 0)
+wald.test(b = coef(fit1), Sigma = vcov(fit1), L = l)
+```
+
+
+```{r}
+# odds ratios and 95% CI
+exp(cbind(OddsRatios = coef(fit1), confint(fit1)))
+
+#Geri anova á fit1 (anova gerir typeI þar sem each variable is added in sequential order, type2 defaults to true but type3 defaults to false)
+Anova(fit1, type = "III")
+
+#Skoða nákvæmni mælinga
+library(ROCR)
+p1 <- predict(fit1, fullAnswerData, type="response")
+pr1 <- prediction(p1, fullAnswerData$correct)
+prf1 <- performance(pr1, measure = "tpr", x.measure = "fpr")
+plot(prf1)
+
+#(auc=area under the curve)
+auc1 <- performance(pr1, measure = "auc")
+auc1 <- auc1@y.values[[1]]
+#Aaaah 0.5401 er það ekki leiðinlega lág tala? 
+auc1
+```
+
+##Hér skoða ég fit2
+```{r}
+
+#Hér tek ég tillit til einkunnar sem nemandi hefur þegar spurningin birtist
+fit2 <- glm(correct~factor(numQ)+grade,family = "binomial", data = fullAnswerData)
+summary(fit2)
+Anova(fit2)
+#grade áður en uppfærður
+
+#Finn öryggisbil með profiled log likelihood
+confint(fit2)
+#Finn hér öryggisbil bara byggð á std error
+confint.default(fit2)
+```
+
+
+```{r}
+#Framkvæmi wald test -> Lesa meira um wald test - prófar overall effect of the correct variable
+wald.test(b = coef(fit2), Sigma = vcov(fit2), Terms = 1:8)
+#The chi-squared test statistic of 25692.3, with 7 degrees of freedom is associated with a p-value of 0.0. 
+#Hvað merkir að fá 0.0, hefði haldið að það væri significant en er það svo significant að það þarf ekki fleiri aukastafi?? 
+#Ætti ég frekar að hafa Terms= 2:7 til að hafa ekki interceptið sem er numQ=2? Þá fæ ég X2=233.6;df=6 og P gildið er enn 0.0
+
+#Hér er ég svo bara að skoða hvort það sé munur á numQ=5 og numQ=6.
+#l1 <- cbind(0, 0, 0, 1, -1, 0, 0, 0)
+#wald.test(b = coef(fit2), Sigma = vcov(fit2), L = l1)
+
+## odds ratios and 95% CI
+exp(cbind(OddsRatios = coef(fit2), confint(fit2)))
+
+#Skoða nákvæmni mælinga
+p2 <- predict(fit2, fullAnswerData, type="response")
+pr2 <- prediction(p2, fullAnswerData$correct)
+prf2 <- performance(pr2, measure = "tpr", x.measure = "fpr")
+plot(prf2)
+
+#(auc=area under the curve)
+auc2 <- performance(pr2, measure = "auc")
+auc2 <- auc2@y.values[[1]]
+#Aaaah 0.5401 er það ekki leiðinlega lág tala? :/ 
+auc2
+
+#Bý til nýjan gagnaramma sem ég ætla svo að nota til að finna probabilities
+newdata2 <- with(fullAnswerData, data.frame(grade = mean(grade), numQ = factor(2:8)))
+
+## view data frame
+
+newdata2$numQP <- predict(fit2, newdata = newdata2, type = "response")
+newdata2
+
+#newdata3 <- with(fullAnswerData, data.frame(grade = rep(seq(from = 0, to = 10, length.out = 100), 7), rank = factor(rep(2:8, each = 100))))
+newdata3 <- with(fullAnswerData, data.frame(grade = rep(seq(from = 0, to = 10, length.out = 100),7), numQ = factor(rep(2:8, each = 100))))
+
+newdata4 <- cbind(newdata3, predict(fit2, newdata = newdata3, type = "link", se = TRUE))
+newdata4 <- within(newdata4, {
+    PredictedProb <- plogis(fit)
+    LL <- plogis(fit - (1.96 * se.fit))
+    UL <- plogis(fit + (1.96 * se.fit))
+})
+
+## view first few rows of final dataset
+head(newdata4)
+
+#Æjæj, smá vöntun hér...okeiokei orðið smá betra en eru þetta réttar upplýsingar? 
+ggplot(newdata4, aes(x = grade, y = PredictedProb)) + geom_ribbon(aes(ymin = LL,
+    ymax = UL, fill = numQ), alpha = 0.2) + geom_line(aes(colour = numQ),
+    size = 1)
+
+with(fit2, null.deviance - deviance)
+with(fit2, df.null - df.residual)
+with(fit2, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE))
+logLik(fit2)
+```
+##Hér skoða ég fit 3
+```{r}
+
+#Hér tek ég tillit til einkunnar sem nemandi hefur þegar spurningin birtist
+fit3 <- glm(correct~factor(numQ)*grade,family = "binomial", data = fullAnswerData)
+summary(fit3)
+#grade áður en uppfærður
+
+#Finn öryggisbil með profiled log likelihood
+confint(fit3)
+#Finn hér öryggisbil bara byggð á std error
+confint.default(fit3)
+```
+
+
+```{r}
+#Framkvæmi wald test -> Lesa meira um wald test - prófar overall effect of the correct variable
+wald.test(b = coef(fit3), Sigma = vcov(fit3), Terms = 1:8)
+#The chi-squared test statistic of 25692.3, with 7 degrees of freedom is associated with a p-value of 0.0. 
+#Hvað merkir að fá 0.0, hefði haldið að það væri significant en er það svo significant að það þarf ekki fleiri aukastafi?? 
+#Ætti ég frekar að hafa Terms= 2:7 til að hafa ekki interceptið sem er numQ=2? Þá fæ ég X2=233.6;df=6 og P gildið er enn 0.0
+
+#Hér er ég svo bara að skoða hvort það sé munur á numQ=5 og numQ=6.
+#l1 <- cbind(0, 0, 0, 1, -1, 0, 0, 0)
+#wald.test(b = coef(fit2), Sigma = vcov(fit2), L = l1)
+
+## odds ratios and 95% CI
+exp(cbind(OddsRatios = coef(fit3), confint(fit3)))
+
+#Skoða nákvæmni mælinga
+p3 <- predict(fit3, fullAnswerData, type="response")
+pr3 <- prediction(p3, fullAnswerData$correct)
+prf3 <- performance(pr3, measure = "tpr", x.measure = "fpr")
+plot(prf3) 
+
+#(auc=area under the curve)
+auc3 <- performance(pr3, measure = "auc")
+auc3 <- auc3@y.values[[1]]
+#Aaaah 0.5401 er það ekki leiðinlega lág tala? :/ 
+auc3
+
+#Bý til nýjan gagnaramma sem ég ætla svo að nota til að finna probabilities
+newData2 <- with(fullAnswerData, data.frame(grade = mean(grade), numQ = factor(2:8)))
+
+
+newData2$numQP <- predict(fit3, newdata = newData2, type = "response")
+newData2
+
+#newdata3 <- with(fullAnswerData, data.frame(grade = rep(seq(from = 0, to = 10, length.out = 100), 7), rank = factor(rep(2:8, each = 100))))
+newData3 <- with(fullAnswerData, data.frame(grade = rep(seq(from = 0, to = 10, length.out = 100),7), numQ = factor(rep(2:8, each = 100))))
+
+newData4 <- cbind(newData3, predict(fit3, newdata = newData3, type = "link", se = TRUE))
+newData4 <- within(newData4, {
+    PredictedProb <- plogis(fit)
+    LL <- plogis(fit - (1.96 * se.fit))
+    UL <- plogis(fit + (1.96 * se.fit))
+})
+
+#Æjæj, smá vöntun hér...okeiokei orðið smá betra en eru þetta réttar upplýsingar? 
+ggplot(newData4, aes(x = grade, y = PredictedProb)) + geom_ribbon(aes(ymin = LL,
+    ymax = UL, fill = numQ), alpha = 0.2) + geom_line(aes(colour = numQ),
+    size = 1)
+
+#Ekki logit
+ggplot(newData4, aes(x = grade, y = fit)) + geom_line(aes(colour = numQ),
+    size = 1)
+
+with(fit3, null.deviance - deviance)
+with(fit3, df.null - df.residual)
+with(fit3, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE))
+logLik(fit3)
+```
+
+
+```{r}
+
+#UUu hérna tek ég tillit til studentId, significant nemendurnir hér eru nokkrir og voru yfirleitt í bullinu
+fit4 <- glm(correct~factor(numQ)+factor(studentId),family = "binomial", data = fullAnswerData)
+summary(fit3)
 #2,2304 log odds fyrir 2 svarmöguleika
 #grade áður en uppfærður
 ```
+```{r}
+anova(fit2,fit3, test="Chisq") #Það er significant munur svo ég vel fit3
+```
+
+```{r}
+#búum til confusion matrix fyrir öll 3 fit-in
+pred1 <- ifelse( predict(fit1, fullAnswerData, type="response")>.50, "1", "0")
+cm1 <- confusionMatrix(factor(pred1), factor(fullAnswerData$correct))
+pred2 <- ifelse( predict(fit2, fullAnswerData, type="response")>.50, "1", "0")
+cm2 <- confusionMatrix(factor(pred2), factor(fullAnswerData$correct))
+#fit3 er með hæsta sensitivity og specificity og þ.a.l. betra en hin
+pred3 <- ifelse( predict(fit3, fullAnswerData, type="response")>.50, "1", "0")
+cm3 <- confusionMatrix(factor(pred3), factor(fullAnswerData$correct))
+summary(p1)
+summary(p2)
+summary(p3)
+
+```
+
+```{r}
+#Geri ROC fyrir fit3 í höndunum hér
+threshold <- seq(from=0.0, to=1.0, by=0.05)
+FPR3 <- c()
+TPR3 <- c()
+a <- 1
+for(i in threshold){
+  pred3 <- ifelse(predict(fit3, fullAnswerData, type="response")>i, "1", "0")
+cm3 <- confusionMatrix(factor(pred3), factor(fullAnswerData$correct), positive = NULL)
+  TPR3[a] <- cm3$byClass[1]
+  FPR3[a] <- 1-cm3$byClass[2]
+  a=a+1
+}
+
+ROC3tafla <- cbind.data.frame(TPR3,FPR3)
+#Formúlurnar eru svona:
+#Sensitivity = TP / (TP + FN)
+#1 - Specificy = TN / (TN + FP)
+ggplot(ROC3tafla, aes(x=FPR3, y=TPR3)) + geom_line() + geom_abline(intercept = 0, lty=2, color='red')
+```
+Lágt Brier skor er gott -> calibration plot AIC, Brier, calibration kúrvan 
+Lágt Brier skor er alltaf betra en við þurfum að hafa mat á efra markinu til að geta fundið. Brier m (max) er mat á efra markinu og þess vegna segir Bsd okkur meira. 
+
+Matið á efra markinu er aldrei útskýrt og þess vegna peppar Gunnar þetta ekkert bilaðslega mikið. Kemur frá Steieberg
+```{r}
+brier1 <- 1/nrow(fullAnswerData) * sum((fullAnswerData$correct - predict(fit1, type='response'))^2) 
+#Get líka fundið Brier skorið svona: 
+mean((fullAnswerData$correct-predict(fit1, type='response'))^2)
+
+brierm1 <- mean(predict(fit1, type = 'response'))*(1-mean(predict(fit1, type='response'))) #Bm
+briersd1 <- 1- (brier1/brierm1) #Bsd standardized score. Því 
+```
+
+```{r}
+brier2 <- 1/nrow(fullAnswerData) * sum((fullAnswerData$correct - predict(fit2, type='response'))^2) 
+#Get líka fundið Brier skorið svona: 
+mean((fullAnswerData$correct-predict(fit2, type='response'))^2)
+
+brierm2 <- mean(predict(fit2, type = 'response'))*(1-mean(predict(fit2, type='response'))) #Bm
+briersd2 <- 1- (brier2/brierm2) #Bsd standardized score. Því 
+
+```
+
+
+```{r}
+brier3 <- 1/nrow(fullAnswerData) * sum((fullAnswerData$correct - predict(fit3, type='response'))^2) 
+#Get líka fundið Brier skorið svona:
+mean((fullAnswerData$correct-predict(fit3, type='response'))^2)
+brierm3 <- mean(predict(fit3, type = 'response'))*(1-mean(predict(fit3, type='response'))) #Bm
+briersd3 <- 1- (brier3/brierm3) #Bsd standardized score. Því 
+```
+```{r}
+df <- data.frame(obs=fullAnswerData$correct, 
+                 predi=predict(fit1, type='response'), 
+                 predi2=predict(fit3, type='response'))
+#Geri predict-in að dálkinum p og væntigildið fer í v, teikna svo upp samaburð á fit1 sem er glatað og fit 3 sem er betra
+df %>% 
+  gather(p,v,-obs) %>% 
+  ggplot(aes(x=v,y=obs)) + 
+  geom_smooth() + 
+  geom_abline(intercept = 0, slope=1, lty=2) + 
+  facet_wrap(~p, scales ='free')
+```
+
+```{r}
+#Hér sé ég hvernig fit1 klikkar
+data.frame(
+                 predi=predict(fit1, type='response'), 
+                 predi2=predict(fit3, type='response')) %>%
+  gather(p, v) %>%
+  ggplot(aes(x = v)) +
+  geom_histogram() +
+  facet_wrap(~p, scales = 'free')
+```
+
+
+gam: Ekki með klassíska línulega líkanið heldur y er fall af xn -> y=f(x1)+f(x2)+.... þeas búin að skipta föllum út fyrir beturnar. Svona eins og í Fourier
+genelized additive model =gam 
+--
+Myndi kannski lagast með glmer en líklegast vantar breytu inn í þetta til að spá betur þegar gildin eru undir 0,7
+--
+Nú er komið líkan -> valdiate, brier, AUC/ROC, Calibration (sem er allt háð gögnum)
+ -> Stika(parameters) Hallatölurnar og skurðpunktar sem koma út úr summary 
+ Nú viljum við búa til gagnasett af sömu stærð. Vel 71 þús en skila alltaf aftur í pottinn
+ Gerum svo nýtt líkan út frá bootstrapinu - þeir verða öðruvísi en originalinn. Þetta þurfum við að gera nokkur þúsund sinnum (örugglega 2000x) til að fá hugmynd um hvernig Brier,AUC/ROC,Calibration er háð því hvernig við veljum gögnin. 
+ 
+ Samantekt: 
+ 1) Bootstrap gögn
+ 2)Líkan
+ 3)Geyma niðurstöður
+ 4) Ef i<B þá go to step 1) [B er stór tala ]
+ 
+ Fáum þá töflu sem geymir brier skorið okkar og auc (þetta er bara for lykkja)
+ Þetta heitir "internal validation" og svo "external validation" sem er frammistaða líkansins á nýjum gögnum. 
+ External validation er alltaf mikið verra. En viljum ekki hafa það ömurlegt, bootstrap kemur í veg fyrir overfitting
+ 
+ Bootstrapa bara besta líkanið, það er fit3
+
+Byrjum á B=10 en endum líklega í B=2000 
+```{r}
+#Get gert svona til að ná í stika úr summary
+names(coef(fit3))
+coef(fit3)[[1]]
+```
+
+for 1:B {Bý til bootstrap data fit líkan dB, fá external pred(newdata=upphaflega gangasettið), geyma skor.....}
+
+Fínt að geta gert líka í höndunum, fá tilfinningu því í lokin gerum við mixed effect líkan
+
+```{r}
+R = 50
+n = nrow(fullAnswerData)
+
+# empty Rx2 matrix for bootstrap results 
+B = data.frame(auc3_org=rep(0,R), 
+               auc3_fit=rep(0,R),
+               auc_opt = rep(0, R))
+C = data.frame(brier_org=rep(0,R),
+               brier_fit=rep(0,R),
+               birer_org_sd = rep(0, R))
+              
+
+set.seed(2504)
+rows = 1:n
+for(i in 1:R){
+
+    # draw a random sample
+    obs.boot <- sample(x = 1:n, size = n, replace = T)
+    data.boot <- fullAnswerData[obs.boot,]
+    rest.data = fullAnswerData[setdiff(rows, obs.boot), ]
+
+    # fit the model on bootstrap sample
+    fit3.boot <- glm(fit3$formula ,
+                      data=data.boot,
+                      family = binomial(link = "logit")) #skoða link logit
+
+    # apply model to original data
+    prob3_org = predict(fit3.boot, type='response', fullAnswerData)
+    pred3_org = prediction(prob3_org, fullAnswerData$correct)
+    auc3_org = performance(pred3_org,"auc")@y.values[[1]][1]
+    B[i, 1] = auc3_org
+
+    # apply model to bootstrap data
+    prob3_fit = predict(fit3.boot, type='response', data.boot)
+    pred3_fit = prediction(prob3_fit, data.boot$correct)
+    auc3_fit = performance(pred3_fit,"auc")@y.values[[1]][1]
+    B[i, 2] = auc3_fit
+    
+    B[i,3] = auc3_fit-auc3_org
+    
+    predict_boot = predict(fit3.boot, type = 'response')
+    brier_boot = mean((data.boot$correct - predict_boot)^2)
+    C[i,1]=brier_boot
+    brier_rest = mean((rest.data$correct - predict(fit3.boot, newdata = rest.data, type = 'response'))^2)
+    C[i,2]=brier_rest
+    #brier_opt
+    # standard brier score (org)
+    
+    # standard brier score (boot)
+    C[i, 3] = 1 - C[i, 1]/(mean(predict_boot)*(1 - mean(predict_boot)))
+    
+
+    print(i)
+}
+cbind(B,C)
+#Þetta býr til það sem 
+#Þetta set ég inn í data.frame
+#Nú vil ég bæta inn dálknum sd brier og optimism fyrir allt 
+
+```
+
+```{r}
+
+C %>%
+  gather(type, value) %>%
+  ggplot(aes(x = type, y = value)) +
+  geom_boxplot() +
+  facet_wrap(~type, scales = 'free')
+
+```
+
+
+```{r}
+B %>%
+  gather(type, value) %>%
+  ggplot(aes(x = value)) +
+  geom_density() +
+  facet_wrap(~type, scales = 'free')
+```
+
