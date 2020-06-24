@@ -33,6 +33,8 @@ stakarSpurnignar <- unique(fullAnswerData$questionId)
 ```{r}
 einstakarSpurnignar <- group_by(fullAnswerData1, numQ)%>%summarise('Fjöldi spurninga(engin eins)'=n())
 
+y <- sum(fullAnswerData$correct/nrow(fullAnswerData))
+
 svarmoguleikaTafla <- group_by(fullAnswerData, numQ) %>% summarise('Fjöldi svara'=n(), 'Fjöldi réttra svara'=sum(correct), 'Hlutfall réttra svara'=sum(correct)/n(), 'Rétt svör á móti réttum overall' = sum(correct)/n()/y)
 
 kable(inner_join(einstakarSpurnignar,svarmoguleikaTafla)) %>% kable_styling(bootstrap_options = c("striped", "hover"))
@@ -48,8 +50,9 @@ ggplot(hlutfallRettra, aes(x=numQ, y=hlutfall2)) + geom_point() + geom_smooth(me
 ```
 
 ```{r}
+##HÉR NOTA ÉG TIMESCORRECT OG TIMESANSWERED SEM ERU EKKI RÉTTAR UPPLÝSINGAR
 #Skoða einstaka spurningar hvort sumar séu einstaklega erfiðar
-spurningaTafla <- group_by(fullAnswerData, questionId) %>% summarise('Hve oft svarað'=unique(timesAnswered), 'Hve oft rétt'=unique(timesCorrect),'Hlutfallslega'=unique(timesCorrect)/unique(timesAnswered), 'Svarmoguleikar'=unique(numQ))
+spurningaTafla <- group_by(fullAnswerData, questionId) %>% summarise('Hve oft svarað'=n(), 'Hve oft rétt'=sum(correct),'Hlutfallslega'=sum(correct)/n(), 'Svarmoguleikar'=unique(numQ))
 kable(spurningaTafla) %>% kable_styling(bootstrap_options = c("striped", "hover"))
 
 ```
