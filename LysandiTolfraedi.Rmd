@@ -10,6 +10,14 @@ output:
 library(tidyverse)
 library(tinytex)
 library(kableExtra)
+#Get notað þessi theme t.d. tufte/bw
+  theme_set(theme_bw() +
+            theme(panel.border = element_rect('black', fill = NA),
+                  text = element_text(size = 14),
+                  legend.text=element_text(size=14),
+                  axis.text=element_text(size=14),
+                  axis.title = element_text(size = 14),
+                  plot.title = element_text(hjust = 0.5)))
 ```
 
 
@@ -31,6 +39,7 @@ stakarSpurnignar <- unique(fullAnswerData$questionId)
 #Er fjöldi svara í réttu hlutfalli við fjölda spurninga í hvert skipti? 
 ```
 ```{r}
+#Spurning hvort ég vilji sleppa rétt svör á móti réttum overall hérna (pælingin var bara að sjá hvar miðjan(1) liggur)
 einstakarSpurnignar <- group_by(fullAnswerData1, numQ)%>%summarise('Fjöldi spurninga(engin eins)'=n())
 
 y <- sum(fullAnswerData$correct/nrow(fullAnswerData))
@@ -38,19 +47,28 @@ y <- sum(fullAnswerData$correct/nrow(fullAnswerData))
 svarmoguleikaTafla <- group_by(fullAnswerData, numQ) %>% summarise('Fjöldi svara'=n(), 'Fjöldi réttra svara'=sum(correct), 'Hlutfall réttra svara'=sum(correct)/n(), 'Rétt svör á móti réttum overall' = sum(correct)/n()/y)
 
 kable(inner_join(einstakarSpurnignar,svarmoguleikaTafla)) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+```{r}
+NUMQ <- c(2,3,4,5,6,7,8)
+SPURNINGAR <- c(26,170,653+2118,428,487,487,763)
+SVOR <- c(574,4354,14331+51118,10561,11009,11050,18973)
+cbind(NUMQ,SPURNINGAR,SVOR)
 ```
 
 ```{r}
 hlutfallRettra <- group_by(fullAnswerData, numQ) %>% summarise('hlutfall1'=sum(correct)/n(), 'hlutfall2'=sum(correct)/n()/y)
-ggplot(hlutfallRettra, aes(x=numQ, y=hlutfall1)) + geom_point() + geom_smooth(method = 'lm', color="cyan") + labs(x="Fjöldi svarmöguleika", y="Hlutfall réttra svara")
+ggplot(hlutfallRettra, aes(x=numQ, y=hlutfall1)) + geom_point() + geom_smooth(method = 'lm', color="cyan") + labs(x="Fjöldi svarmöguleika", y="Hlutfall réttra svara") 
+
 ```
 
 ```{r}
+#Spurning um að sleppa þessari mynd (sé bara að 6 svarmöguleikar samsvara nokkurn veginn meðaleinkunn á heild litið)
 ggplot(hlutfallRettra, aes(x=numQ, y=hlutfall2)) + geom_point() + geom_smooth(method = 'lm', color="cyan") + labs(x="Fjöldi svarmöguleika", y="Rétt svör á móti réttum overall")
 ```
 
 ```{r}
-##HÉR NOTA ÉG TIMESCORRECT OG TIMESANSWERED SEM ERU EKKI RÉTTAR UPPLÝSINGAR
+##HÉR NOTAÐI ÉG TIMESCORRECT OG TIMESANSWERED SEM ERU EKKI RÉTTAR UPPLÝSINGAR - búin að laga
 #Skoða einstaka spurningar hvort sumar séu einstaklega erfiðar
 spurningaTafla <- group_by(fullAnswerData, questionId) %>% summarise('Hve oft svarað'=n(), 'Hve oft rétt'=sum(correct),'Hlutfallslega'=sum(correct)/n(), 'Svarmoguleikar'=unique(numQ))
 kable(spurningaTafla) %>% kable_styling(bootstrap_options = c("striped", "hover"))
@@ -61,7 +79,6 @@ kable(spurningaTafla) %>% kable_styling(bootstrap_options = c("striped", "hover"
 spurningaTaflaDF <- as.data.frame(spurningaTafla)
 ggplot(spurningaTaflaDF , aes(x = Svarmoguleikar, y = Hlutfallslega, group=Svarmoguleikar)) + geom_boxplot() +labs(x = "Meðal fjöldi svarmöguleika", y = "Heildareinkunn") + labs(title = "Samband fjölda svarmöguleika og einkunna") + geom_smooth(method = 'lm', color="cyan", aes(group=1))
 
-lm(spurningaTaflaDF)
 ```
 
 ```{r}
@@ -81,10 +98,23 @@ glm(nemendaTaflaDF)
 ```
 ```{r}
 #Jæja þessi mynd er ekki að gera góða hluti. Ætlaði að gera fína logistic regression línu inn á hana...
+#Get líka ekki keyrt þetta nema vera með fit1 í environment-inu...
+
 yhat.df <- fullAnswerData %>% mutate(fit = predict(fit1, newdata=fullAnswerData, type='response') ) 
 
 ggplot(fullAnswerData, aes(x=numQ, y=correct)) + geom_count() + scale_size_area() + geom_line(data=yhat.df, aes(y=fit), color='red')
 ```
 
 
+```{r}
+#Sé ekkert athugavert við numQ=3 hér
+fullAnswerData %>%
+  group_by(lectureId, studentId) %>%
+  mutate(attempt = row_number()) %>%
+  group_by(lectureId, attempt) %>%
+  mutate(mg = mean(grade)) %>%
+  ggplot(aes(x = mg, y = attempt)) +
+  geom_point() +
+  facet_wrap(~factor(numQ))
+```
 

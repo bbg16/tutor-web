@@ -58,7 +58,7 @@ wald.test(b = coef(fit1), Sigma = vcov(fit1), L = l)
 exp(cbind(OddsRatios = coef(fit1), confint(fit1)))
 
 #Geri anova á fit1 (anova gerir typeI þar sem each variable is added in sequential order, type2 defaults to true but type3 defaults to false)
-Anova(fit1, type = "III")
+Anova(fit1, type = "3")
 
 #Skoða nákvæmni mælinga
 library(ROCR)
@@ -219,13 +219,19 @@ with(fit3, df.null - df.residual)
 with(fit3, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE))
 logLik(fit3)
 ```
-
+Hér vil ég finna af hverju numQ 3 er með ólíka hallatölu
+```{r}
+ggplot(filter(fullAnswerData, numQ == "2"), aes(x=factor(correct), y=grade)) + geom_boxplot()
+ggplot(filter(fullAnswerData, numQ == "3"), aes(x=factor(correct), y=grade)) + geom_boxplot()
+ggplot(filter(fullAnswerData, numQ == "4"), aes(x=factor(correct), y=grade)) + geom_boxplot()
+ggplot(filter(fullAnswerData, numQ == "5"), aes(x=factor(correct), y=grade)) + geom_boxplot()
+```
 
 ```{r}
 
 #UUu hérna tek ég tillit til studentId, significant nemendurnir hér eru nokkrir og voru yfirleitt í bullinu
 fit4 <- glm(correct~factor(numQ)+factor(studentId),family = "binomial", data = fullAnswerData)
-summary(fit3)
+summary(fit4)
 #2,2304 log odds fyrir 2 svarmöguleika
 #grade áður en uppfærður
 ```
@@ -358,16 +364,21 @@ for 1:B {Bý til bootstrap data fit líkan dB, fá external pred(newdata=upphafl
 Fínt að geta gert líka í höndunum, fá tilfinningu því í lokin gerum við mixed effect líkan
 
 ```{r}
-R = 50
+R = 5000
 n = nrow(fullAnswerData)
 
-# empty Rx2 matrix for bootstrap results 
+# 3 data frames for bootstrap results 
 B = data.frame(auc3_org=rep(0,R), 
-               auc3_fit=rep(0,R),
+               auc3_boot=rep(0,R),
                auc_opt = rep(0, R))
-C = data.frame(brier_org=rep(0,R),
-               brier_fit=rep(0,R),
-               birer_org_sd = rep(0, R))
+C = data.frame(#brier_org=rep(0,R),
+               brier_boot=rep(0,R),
+               brier_rest=rep(0,R),
+               brier_opt = rep(0, R))
+D = data.frame(#brier_org_sd=rep(0,R),
+               brier_boot_sd=rep(0,R),
+               brier_rest_sd=rep(0,R),
+               brier_opt_sd=rep(0,R))
               
 
 set.seed(2504)
@@ -391,28 +402,40 @@ for(i in 1:R){
     B[i, 1] = auc3_org
 
     # apply model to bootstrap data
-    prob3_fit = predict(fit3.boot, type='response', data.boot)
-    pred3_fit = prediction(prob3_fit, data.boot$correct)
-    auc3_fit = performance(pred3_fit,"auc")@y.values[[1]][1]
-    B[i, 2] = auc3_fit
+    prob3_boot = predict(fit3.boot, type='response', data.boot)
+    pred3_boot = prediction(prob3_boot, data.boot$correct)
+    auc3_boot = performance(pred3_boot,"auc")@y.values[[1]][1]
+    B[i, 2] = auc3_boot
     
-    B[i,3] = auc3_fit-auc3_org
+    #AUC optimisim
+    B[i,3] = auc3_boot-auc3_org
+    
     
     predict_boot = predict(fit3.boot, type = 'response')
     brier_boot = mean((data.boot$correct - predict_boot)^2)
+ #   C[i,1]=brier_org= mean((fullAnswerData$correct - predict(fit3, type='response'))^2)
     C[i,1]=brier_boot
+    predict_rest= predict(fit3.boot, type='response')
     brier_rest = mean((rest.data$correct - predict(fit3.boot, newdata = rest.data, type = 'response'))^2)
-    C[i,2]=brier_rest
-    #brier_opt
-    # standard brier score (org)
+    C[i,2]=brier_rest 
+    C[i,3]=brier_boot-brier_rest
+    #brier_opt = brier_boot - brier_org
     
+    
+    #standard brier score (org)
+ #   D[i,1]=1 - C[i,1]/(mean(predict(fit3,type='response', newdata=fullAnswerData))*(1-mean(predict(fit3,type='response', newdata=fullAnswerData))))
+  
     # standard brier score (boot)
-    C[i, 3] = 1 - C[i, 1]/(mean(predict_boot)*(1 - mean(predict_boot)))
-    
-
-    print(i)
+    D[i, 1] = 1 - C[i, 1]/(mean(predict_boot)*(1 - mean(predict_boot)))
+    D[i,2] = brier_rest_sd = 1 - C[i,2]/(mean(predict_rest)*(1-mean(predict_rest)))
+    D[i, 3] = brier_opt_sd= D[i, 1] - D[i,2]
+    if (i %% 100 == 0) {print(i)}
 }
-cbind(B,C)
+bsTafla <- cbind(B,C,D)
+
+write_csv(x = bsTafla,path = 'Data/bsTafla.csv')
+bsTafla <- read_csv('Data/bsTafla.csv')
+
 #Þetta býr til það sem 
 #Þetta set ég inn í data.frame
 #Nú vil ég bæta inn dálknum sd brier og optimism fyrir allt 
@@ -420,8 +443,18 @@ cbind(B,C)
 ```
 
 ```{r}
+mean(D$brier_opt_sd)
+```
 
-C %>%
+
+```{r}
+ggplot(bsTafla, aes(x = auc_opt)) + geom_histogram()
+```
+
+
+```{r}
+
+bsTafla[4:6] %>%
   gather(type, value) %>%
   ggplot(aes(x = type, y = value)) +
   geom_boxplot() +
@@ -431,10 +464,25 @@ C %>%
 
 
 ```{r}
-B %>%
+bsTafla[1:3] %>%
   gather(type, value) %>%
   ggplot(aes(x = value)) +
   geom_density() +
   facet_wrap(~type, scales = 'free')
+```
+```{r}
+bsTafla[7:9] %>%
+  gather(type, value) %>%
+  ggplot(aes(x = type, y = value)) +
+  geom_boxplot() +
+  facet_wrap(~type, scales = 'free')
+```
+
+```{r}
+library(lme4)
+#Á ég ekki að hafa family = binomial frekar en poisson? 
+mfit <- glmer(correct ~ numQ*grade + (1|studentId), data = fullAnswerData, family = "binomial", nAGQ = 0)
+summary(mfit)
+Anova(mfit, type="3")
 ```
 
