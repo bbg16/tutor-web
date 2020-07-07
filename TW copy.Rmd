@@ -41,6 +41,7 @@ stdevs <- lectureStudentSetting%>%group_by(key)%>%summarise(stdev=sd(value,na.rm
 
 #dir, qName(Qgen-ið), hash, numQ, notaType
 hashes<-read.csv('Data/bighashfile.wide.txt',sep=" ",col.names =c("dir","qName","hash","hash2","hash3","numQ","notaType"),na.strings = ".")
+
 hashes <- filter(hashes, notaType == "noNOTA")
 
 plonePath<-unique(paste(hashes$dir,hashes$qName,sep=""))
@@ -58,7 +59,7 @@ myAnswer <- as.data.frame(myAnswer)
 #
 # myAnswer should now contain all answers to just the questions listed in the hash file
 #inner_join(myAnswer,hashes)->fullAnswerData # ERROR: AOTA+ multiplies the dimension!!!
-fullAnswerData <- inner_join(myAnswer,hashes)->fullAnswerData
+fullAnswerData <- inner_join(myAnswer,hashes)
 #Breyti correct breytunni í factor (það hefur áhrif á svarmöguleika töfluna í lýsandi tölfræðinni...)
 #fullAnswerData$correct <- as.factor(fullAnswerData$correct)
 #
@@ -68,8 +69,9 @@ fullAnswerData <- inner_join(myAnswer,hashes)->fullAnswerData
 #Eftir að hafa skoðað missmap vil ég fjarlægja dálkana hash2 og hash3 og ugQuestionGuid
 fullAnswerData <- subset(fullAnswerData, select = -c(hash2,hash3,ugQuestionGuid))
 fullAnswerData <- na.omit(fullAnswerData)
-
-
+#Bæti inn qdif
+qdif <- c(fullAnswerData$timesCorrect/fullAnswerData$timesAnswered)
+fullAnswerData <- cbind(fullAnswerData, qdif=qdif)
 
 #lectureId, lectureVersion, key, creationDate, value
 lectureGlobalSetting<-tbl(twDb,"lectureGlobalSetting")

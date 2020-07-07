@@ -47,7 +47,6 @@ y <- sum(fullAnswerData$correct/nrow(fullAnswerData))
 svarmoguleikaTafla <- group_by(fullAnswerData, numQ) %>% summarise('Fjöldi svara'=n(), 'Fjöldi réttra svara'=sum(correct), 'Hlutfall réttra svara'=sum(correct)/n(), 'Rétt svör á móti réttum overall' = sum(correct)/n()/y)
 
 kable(inner_join(einstakarSpurnignar,svarmoguleikaTafla)) %>% kable_styling(bootstrap_options = c("striped", "hover"))
-
 ```
 ```{r}
 NUMQ <- c(2,3,4,5,6,7,8)
@@ -59,6 +58,9 @@ cbind(NUMQ,SPURNINGAR,SVOR)
 ```{r}
 hlutfallRettra <- group_by(fullAnswerData, numQ) %>% summarise('hlutfall1'=sum(correct)/n(), 'hlutfall2'=sum(correct)/n()/y)
 ggplot(hlutfallRettra, aes(x=numQ, y=hlutfall1)) + geom_point() + geom_smooth(method = 'lm', color="cyan") + labs(x="Fjöldi svarmöguleika", y="Hlutfall réttra svara") 
+
+#Meðaleinkunn heildarinnar
+summarise(fullAnswerData, sum(correct/n()))
 
 ```
 
@@ -116,5 +118,28 @@ fullAnswerData %>%
   ggplot(aes(x = mg, y = attempt)) +
   geom_point() +
   facet_wrap(~factor(numQ))
+```
+
+```{r}
+group_by(fullAnswerData, lectureId, studentId) %>%
+  count() %>%
+  ggplot(aes(x = factor(lectureId), y = n)) + geom_boxplot()
+
+```
+
+```{r}
+fullAnswerData %>% filter(lectureId == 3082)
+```
+```{r}
+fullAnswerData %>%
+group_by(numQ) %>%
+  mutate(qdif)%>%
+  ggplot(aes(x=factor(numQ), y=qdif)) + geom_boxplot()
+```
+
+```{r}
+qdif <- c(fullAnswerData$timesCorrect/fullAnswerData$timesAnswered)
+fullAnswerData <- cbind(fullAnswerData, qdif=qdif)
+  group_by(fullAnswerData, questionId) %>% count(qdif)
 ```
 
