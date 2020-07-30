@@ -1,0 +1,386 @@
+---
+title: "Likon"
+author: "Birna"
+date: "7/28/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r message=FALSE, warning=FALSE}
+library(dbplyr)
+library(dplyr)
+library(tidyr)
+library(MASS)
+library(tidyverse)
+library(ggplot2)
+library(cowplot)
+library(aod)
+library(ROCR)
+library(car)
+library(caret)
+library(DescTools)
+library(Amelia)
+library(boot)
+library(lme4)
+library(broom)
+library(kableExtra)
+```
+
+```{r}
+fullAnswerData <- read.csv('Data/fullAnswerData.csv')
+```
+
+Hér tökum við saman níu líkön. Í fimm þeirra er notast við venjulega tvíkosta aðhvarfsgreiningu en í fjórum skoðum við tvíkosta aðhvarfsgreiningu með tilliti til slembiþátta. 
+Öll níu líkönin innihalda háðu breytuna correct. Breytan er tvíkosta breyta sem segir til um hvort spurningu hafi verið svarað rétt(1) eða rangt(0). 
+Fyrir hvert og eitt líkan má sjá ROC kúrvu þess, AUC stuðulinn og Brier skor en þessi gögn má nota til að meta gæði líkansins. 
+
+Fyrsta líkanið tekur tillit til spábreytunnar numQ. Hér er numQ flokkabreyta sem segir til um fjölda svarmöguleika í hverri spurningu. Breytan numQ tekur gildi frá 2 upp í 8 svarmöguleika.  
+
+### Líkan 1 
+```{r}
+fit1 <- glm(correct~factor(numQ),family = "binomial", data = fullAnswerData)
+summary(fit1)
+
+#Teiknum ROC og reiknum út AUC
+p1 <- predict(fit1, fullAnswerData, type="response")
+pr1 <- prediction(p1, fullAnswerData$correct)
+prf1 <- performance(pr1, measure = "tpr", x.measure = "fpr")
+plot(prf1)
+
+auc1 <- performance(pr1, measure = "auc")
+auc1 <- auc1@y.values[[1]]
+auc1
+
+#Brier fyrir líkanið
+B1 <- mean((fullAnswerData$correct-predict(fit1, fullAnswerData, type="response")^2))
+
+B1m <- mean(predict(fit1, fullAnswerData, type="response"))*
+  (1-mean(predict(fit1, fullAnswerData, type="response")))
+
+B1sd <- 1-(B1/B1m)
+
+kable(cbind(B1,B1m,B1sd)) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+Annað líkanið inniheldur áfram flokkabreytuna numQ sem er spábreyta í þessu líkani. Hins vegar höfum við bætt við spábreytunni grade þar sem ekki er tekið tillit til víxlhrifa. 
+Við frekari athugun varð það ljóst að breytan grade, sem segir til um einkunn nemanda. Inniheldur þá einkunn sem nemandi fær eftir að hafa svarað tiltekinni spurningu. Það má því lýsa því þannig að breytan sýni okkur inn í framtíðina sem gerir líkanið óraunhæft. 
+
+### Líkan 2
+```{r}
+fit2 <- glm(correct~factor(numQ)+grade,family = "binomial", data = fullAnswerData)
+summary(fit2)
+
+#Teiknum ROC og reiknum út AUC
+p2 <- predict(fit2, fullAnswerData, type="response")
+pr2 <- prediction(p2, fullAnswerData$correct)
+prf2 <- performance(pr2, measure = "tpr", x.measure = "fpr")
+plot(prf2)
+
+auc2 <- performance(pr2, measure = "auc")
+auc2 <- auc2@y.values[[1]]
+auc2
+
+#Brier fyrir líkanið
+B2 <- mean((fullAnswerData$correct-predict(fit2, fullAnswerData, type="response")^2))
+
+B2m <- mean(predict(fit2, fullAnswerData, type="response"))*
+  (1-mean(predict(fit2, fullAnswerData, type="response")))
+
+B2sd <- 1-(B2/B2m)
+
+kable(cbind(B2,B2m,B2sd)) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+
+#Teikna upp predicted probabilities á móti numQ
+newdata2 <- with(fullAnswerData, data.frame(grade = mean(grade), numQ = factor(2:8)))
+newdata2$numQP <- predict(fit2, newdata = newdata2, type = "response")
+
+newdata3 <- with(fullAnswerData, data.frame(grade = rep(seq(from = 0, to = 10, length.out = 100),7), numQ = factor(rep(2:8, each = 100))))
+
+newdata4 <- cbind(newdata3, predict(fit2, newdata = newdata3, type = "link", se = TRUE))
+newdata4 <- within(newdata4, {
+    PredictedProb <- plogis(fit)
+    LL <- plogis(fit - (1.96 * se.fit))
+    UL <- plogis(fit + (1.96 * se.fit))
+})
+
+ggplot(newdata4, aes(x = grade, y = PredictedProb)) + geom_ribbon(aes(ymin = LL,
+    ymax = UL, fill = numQ), alpha = 0.2) + geom_line(aes(colour = numQ),
+    size = 1)
+```
+Þriðja líkanið inniheldur áfram flokkabreytuna numQ og spábreytuna grade. Hins vegar höfum við nú bætt því inn að tekið sé tillit til víxlhrifa milli breytanna.
+Eins og í líkani númer 2 varð það ljóst að breytan grade, sem segir til um einkunn nemanda. Inniheldur þá einkunn sem nemandi fær eftir að hafa svarað tiltekinni spurningu. Það má því lýsa því þannig að breytan sýni okkur inn í framtíðina sem gerir líkanið óraunhæft. 
+
+### Líkan 3
+```{r}
+fit3 <- glm(correct~factor(numQ)*grade,family = "binomial", data = fullAnswerData)
+summary(fit3)
+
+#ROC og AUC fyrir líkanið 
+p3 <- predict(fit3, fullAnswerData, type="response")
+pr3 <- prediction(p3, fullAnswerData$correct)
+prf3 <- performance(pr3, measure = "tpr", x.measure = "fpr")
+plot(prf3) 
+
+auc3 <- performance(pr3, measure = "auc")
+auc3 <- auc3@y.values[[1]]
+auc3
+
+#Brier fyrir líkanið
+B3 <- mean((fullAnswerData$correct-predict(fit3, fullAnswerData, type="response")^2))
+
+B3m <- mean(predict(fit3, fullAnswerData, type="response"))*
+  (1-mean(predict(fit3, fullAnswerData, type="response")))
+
+B3sd <- 1-(B3/B3m)
+
+kable(cbind(B3,B3m,B3sd)) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+
+#Teikna upp predicted probabilities á móti numQ
+newData2 <- with(fullAnswerData, data.frame(grade = mean(grade), numQ = factor(2:8)))
+newData2$numQP <- predict(fit3, newdata = newData2, type = "response")
+
+newData3 <- with(fullAnswerData, data.frame(grade = rep(seq(from = 0, to = 10, length.out = 100),7), numQ = factor(rep(2:8, each = 100))))
+
+newData4 <- cbind(newData3, predict(fit3, newdata = newData3, type = "link", se = TRUE))
+newData4 <- within(newData4, {
+    PredictedProb <- plogis(fit)
+    LL <- plogis(fit - (1.96 * se.fit))
+    UL <- plogis(fit + (1.96 * se.fit))
+})
+
+ggplot(newData4, aes(x = grade, y = PredictedProb)) + geom_ribbon(aes(ymin = LL,
+    ymax = UL, fill = numQ), alpha = 0.2) + geom_line(aes(colour = numQ),
+    size = 1)
+
+#Sama mynd en ekki logit
+ggplot(newData4, aes(x = grade, y = fit)) + geom_line(aes(colour = numQ),
+    size = 1)
+
+```
+
+Fjórða líkanið inniheldur áfram flokkabreytuna numQ en breytan grade hefur verið tekin út og flokkabreytunni studentId bætt inn, án þess að tekið sé tillit til víxlhrifa. 
+
+### Líkan 4
+```{r}
+fit4 <- glm(correct~factor(numQ)+factor(studentId),family = "binomial", data = fullAnswerData)
+summary(fit4)
+
+#ROC og AUC fyrir líkanið 
+p4 <- predict(fit4, fullAnswerData, type="response")
+pr4 <- prediction(p4, fullAnswerData$correct)
+prf4 <- performance(pr4, measure = "tpr", x.measure = "fpr")
+plot(prf4) 
+
+auc4 <- performance(pr4, measure = "auc")
+auc4 <- auc4@y.values[[1]]
+auc4
+
+#Brier fyrir líkanið
+B4 <- mean((fullAnswerData$correct-predict(fit4, fullAnswerData, type="response")^2))
+
+B4m <- mean(predict(fit4, fullAnswerData, type="response"))*
+  (1-mean(predict(fit4, fullAnswerData, type="response")))
+
+B4sd <- 1-(B4/B4m)
+
+kable(cbind(B4,B4m,B4sd)) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+```
+Fimmta líkanið er fyrsta líkanið þar sem tekið er tillit til slembiþátta. Í þeim líkönum er breytan studentId sem táknar hvern og einn nemanda höfð sem slembibreyta. 
+Í fyrsta slembiþáttalíkaninu eru spábreyturnar flokkabreytan numQ og grade. Eins og áður hefur komið fram viljum við ekki notast við breytuna grade og því var þeirri breytu skipt út í næsta líkani.
+
+### Líkan 5
+```{r}
+gmfit <- glmer(correct~factor(numQ)*grade + factor(lectureId) + (1|studentId), nAGQ = 0,
+              family = "binomial", 
+              data = fullAnswerData)
+summary(gmfit)
+
+#ROC og AUC fyrir líkanið 
+p5 <- predict(gmfit, fullAnswerData, type="response")
+pr5 <- prediction(p5, fullAnswerData$correct)
+prf5 <- performance(pr5, measure = "tpr", x.measure = "fpr")
+plot(prf5) 
+
+auc5 <- performance(pr5, measure = "auc")
+auc5 <- auc5@y.values[[1]]
+auc5
+
+#Brier fyrir líkanið
+B5 <- mean((fullAnswerData$correct-predict(gmfit, fullAnswerData, type="response")^2))
+
+B5m <- mean(predict(gmfit, fullAnswerData, type="response"))*
+  (1-mean(predict(gmfit, fullAnswerData, type="response")))
+
+B5sd <- 1-(B5/B5m)
+
+kable(cbind(B5,B5m,B5sd)) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+```
+Í sjötta líkaninu er búið að skipta breytunni grade út fyrir breytuna qdif. Þeirri breytu var bætt inn í fullAnswerData gagnarammann en qdif=timesCorrect/timesAnswered. Því segir breytan til um erfiðleikastig spurningarinnar. Í líkaninu er nAGQ=0 sem þýðir að um ákveðna nálgun sé að ræða. 
+
+### Líkan 6
+```{r}
+mfit0 <- glmer(correct ~ numQ*qdif + (1|studentId), data = fullAnswerData, family = "binomial", nAGQ = 0)
+summary(mfit0)
+
+#ROC og AUC fyrir líkanið 
+p6 <- predict(mfit0, fullAnswerData, type="response")
+pr6 <- prediction(p6, fullAnswerData$correct)
+prf6 <- performance(pr6, measure = "tpr", x.measure = "fpr")
+plot(prf6) 
+
+auc6 <- performance(pr6, measure = "auc")
+auc6 <- auc6@y.values[[1]]
+auc6
+
+#Brier fyrir líkanið
+B6 <- mean((fullAnswerData$correct-predict(mfit0, fullAnswerData, type="response")^2))
+
+B6m <- mean(predict(mfit0, fullAnswerData, type="response"))*
+  (1-mean(predict(mfit0, fullAnswerData, type="response")))
+
+B6sd <- 1-(B6/B6m)
+
+kable(cbind(B6,B6m,B6sd)) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+```
+Eini munurinn á sjöunda líkaninu og því sjötta er sú að nAGQ=1 í því sjöunda. 
+### Líkan 7
+```{r}
+mfit1 <- glmer(correct ~ numQ*qdif + (1|studentId), data = fullAnswerData, family = "binomial", nAGQ = 1)
+summary(mfit1)
+
+#ROC og AUC fyrir líkanið 
+p7 <- predict(mfit1, fullAnswerData, type="response")
+pr7 <- prediction(p7, fullAnswerData$correct)
+prf7 <- performance(pr7, measure = "tpr", x.measure = "fpr")
+plot(prf7) 
+
+auc7 <- performance(pr7, measure = "auc")
+auc7 <- auc7@y.values[[1]]
+auc7
+
+#Brier fyrir líkanið
+B7 <- mean((fullAnswerData$correct-predict(mfit1, fullAnswerData, type="response")^2))
+
+B7m <- mean(predict(mfit1, fullAnswerData, type="response"))*
+  (1-mean(predict(mfit1, fullAnswerData, type="response")))
+
+B7sd <- 1-(B7/B7m)
+
+kable(cbind(B7,B7m,B7sd)) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+```
+Í áttunda líkaninu bökkuðum við aftur yfir í venjulegu tvíkosta aðhvarfsgreiningarnar þar sem líkani þrjú var breytt þannig að í stað þess að taka breytuna grade inn í líkanið var henni skipt út fyrir nýju breytuna qdif.
+### Líkan 8
+```{r}
+fit3a <- glm(correct~factor(numQ)*qdif,family = "binomial", data = fullAnswerData)
+summary(fit3a)
+
+#ROC og AUC fyrir líkanið 
+p8 <- predict(fit3a, fullAnswerData, type="response")
+pr8 <- prediction(p8, fullAnswerData$correct)
+prf8 <- performance(pr8, measure = "tpr", x.measure = "fpr")
+plot(prf8) 
+
+auc8 <- performance(pr8, measure = "auc")
+auc8 <- auc8@y.values[[1]]
+auc8
+
+#Brier fyrir líkanið
+B8 <- mean((fullAnswerData$correct-predict(fit3a, fullAnswerData, type="response")^2))
+
+B8m <- mean(predict(fit3a, fullAnswerData, type="response"))*
+  (1-mean(predict(fit3a, fullAnswerData, type="response")))
+
+B8sd <- 1-(B8/B8m)
+
+kable(cbind(B8,B8m,B8sd)) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+```
+Í níunda og síðasta líkaninu er studentId slembiþátturinn en spábreyturnar eru þrjár. Þær eru flokkabreytan numQ og qdif þar sem tekið er tillit til víxlhrifa ásamt flokkabreytunni lectureId þar sem ekki er tekið tillit til víxlhrifa. Flokkabreytan lectureId segir til um í hvaða verkefni nemandi vann. Til að mynda hvort um sé að ræða próf eða verkefni sem hefur minna vægi. 
+### Líkan 9
+```{r}
+mfit <- glmer(correct~factor(numQ)*qdif + factor(lectureId) + (1|studentId), nAGQ = 0,
+              family = "binomial", 
+              data = fullAnswerData)
+summary(mfit)
+
+#ROC og AUC fyrir líkanið 
+p9 <- predict(mfit, fullAnswerData, type="response")
+pr9 <- prediction(p9, fullAnswerData$correct)
+prf9 <- performance(pr9, measure = "tpr", x.measure = "fpr")
+plot(prf9) 
+
+auc9 <- performance(pr9, measure = "auc")
+auc9 <- auc9@y.values[[1]]
+auc9
+
+#Brier fyrir líkanið
+B9 <- mean((fullAnswerData$correct-predict(mfit, fullAnswerData, type="response")^2))
+
+B9m <- mean(predict(mfit, fullAnswerData, type="response"))*
+  (1-mean(predict(mfit, fullAnswerData, type="response")))
+
+B9sd <- 1-(B9/B9m)
+
+kable(cbind(B9,B9m,B9sd)) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+
+#ranef mynd
+ranef(mfit) %>%
+  as_tibble() -> ranef_m
+ranef_m %>% 
+  ggplot(aes(x=condval)) +
+  geom_density() +
+  geom_vline(xintercept = mean(ranef_m$condval), col="red")
+```
+
+### Samanburður líkana
+```{r}
+AUC <- c(auc1,auc2,auc3,auc4,auc5,auc6,auc7,auc8,auc9)
+fit <- c("fit1","fit2","fit3","fit4","gmfit","mfit0","mfit1","fit3a","mfit")
+Brier <- c(B1,B2,B3,B4,B5,B6,B7,B8,B9)
+Brier_s <- c(B1sd,B2sd,B3sd,B4sd,B5sd,B6sd,B7sd,B8sd,B9sd)
+fit.tafla <- data.frame(fit,AUC,Brier,Brier_s)
+colnames(fit.tafla) <- c("Líkan", "AUC", "Brier Score", "Brier Skill Score")
+fit.tafla
+
+
+df <- data.frame(obs=fullAnswerData$correct, 
+                 predi_fit4=predict(fit4, type='response'), 
+                 predi_mfit=predict(mfit, type='response'),
+                 predi_mfit0=predict(mfit0,type='response'),
+                 predi_mfit1=predict(mfit1,type='response'),
+                 predi_fit3a=predict(fit3a,type='response'))
+
+#Geri predict-in að dálkinum p og væntigildið fer í v, teikna svo upp samaburð
+df %>% 
+  gather(p,v,-obs) %>% 
+  ggplot(aes(x=v,y=obs)) + 
+  geom_smooth() + 
+  geom_abline(intercept = 0, slope=1, lty=2) + 
+  facet_wrap(~p, scales ='free')
+
+data.frame(
+                 predi_fit4=predict(fit4, type='response'), 
+                 predi_mfit=predict(mfit, type='response'),
+                 predi_mfit0=predict(mfit0,type='response'),
+                 predi_mfit1=predict(mfit1,type='response'),
+                 predi_fit3a=predict(fit3a,type='response')) %>%
+  gather(p, v) %>%
+  ggplot(aes(x = v)) +
+  geom_histogram() +
+  facet_wrap(~p, scales = 'free')
+
+#anova
+anova(mfit,mfit0)
+anova(mfit,mfit1)
+
+Anova(mfit,type="3")
+
+#Skoðum stuðla
+broom::tidy(mfit)
+```
+Athugum að fit2, fit3 og gmfit innihalda breytuna grade sem inniheldur einkunn eftir að spurningu hefur verið svarað og er háð tíma sem veldur því að líkanið spáir "of vel" fyrir.  
+Þegar þessi þrjú líkön eru tekin til hliðar má sjá að hæsta AUC gildið utan þeirra er í líkaninu mfit. 
+Það líkan er með annað hæsta Brier skill skorið og annað lægsta Brier skorið.
+Hins vegar má sjá að nokkuð lítill munur er á öllum mfit líkönunum.
+
+
