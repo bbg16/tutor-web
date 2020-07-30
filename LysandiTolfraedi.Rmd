@@ -131,15 +131,17 @@ group_by(fullAnswerData, lectureId, studentId) %>%
 fullAnswerData %>% filter(lectureId == 3082)
 ```
 ```{r}
-fullAnswerData %>%
+fullAnswerData1 %>%
 group_by(numQ) %>%
   mutate(qdif)%>%
-  ggplot(aes(x=factor(numQ), y=qdif)) + geom_boxplot()
+  ggplot(aes(x=factor(numQ), y=qdif)) + geom_boxplot() + geom_point(aes(x=numQ-1, y=1/numQ, color="red"))
+#+ geom_jitter(position=position_jitter(width=.1, height=0))
+#Þessar þrjár spurningar í numQ=4, þar sem færri en 25% svara rétt, eru allar í lokaprófinu
 ```
 
 ```{r}
 qdif <- c(fullAnswerData$timesCorrect/fullAnswerData$timesAnswered)
 fullAnswerData <- cbind(fullAnswerData, qdif=qdif)
-  group_by(fullAnswerData, questionId) %>% count(qdif)
+  group_by(fullAnswerData, questionId) %>% count(qdif) 
 ```
 
