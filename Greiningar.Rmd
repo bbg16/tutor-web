@@ -10,6 +10,8 @@ library(aod)
 library(car)
 library(caret)
 library(ggthemes)
+library(pROC)
+library(lme4) #fyrir glmer
 #Get notað þessi theme t.d. tufte/bw
   theme_set(theme_bw() +
             theme(panel.border = element_rect('black', fill = NA),
@@ -118,13 +120,8 @@ auc2
 
 #Bý til nýjan gagnaramma sem ég ætla svo að nota til að finna probabilities
 newdata2 <- with(fullAnswerData, data.frame(grade = mean(grade), numQ = factor(2:8)))
-
-## view data frame
-
 newdata2$numQP <- predict(fit2, newdata = newdata2, type = "response")
-newdata2
 
-#newdata3 <- with(fullAnswerData, data.frame(grade = rep(seq(from = 0, to = 10, length.out = 100), 7), rank = factor(rep(2:8, each = 100))))
 newdata3 <- with(fullAnswerData, data.frame(grade = rep(seq(from = 0, to = 10, length.out = 100),7), numQ = factor(rep(2:8, each = 100))))
 
 newdata4 <- cbind(newdata3, predict(fit2, newdata = newdata3, type = "link", se = TRUE))
@@ -256,7 +253,7 @@ summary(p3)
 
 ```{r}
 #Geri ROC fyrir fit3 í höndunum hér
-threshold <- seq(from=0.0, to=1.0, by=0.05)
+threshold <- seq(from=0.0, to=1.0, by=0.005)
 FPR3 <- c()
 TPR3 <- c()
 a <- 1
@@ -443,7 +440,7 @@ bsTafla <- read_csv('Data/bsTafla.csv')
 ```
 
 ```{r}
-mean(D$brier_opt_sd)
+mean(bsTafla$brier_opt_sd)
 ```
 
 
@@ -454,11 +451,20 @@ ggplot(bsTafla, aes(x = auc_opt)) + geom_histogram()
 
 ```{r}
 
-bsTafla[4:6] %>%
+bsTafla[4:5] %>%
   gather(type, value) %>%
   ggplot(aes(x = type, y = value)) +
   geom_boxplot() +
   facet_wrap(~type, scales = 'free')
+
+bsTafla[4:6] %>%
+  gather(type, value) %>%
+  mutate(ftype=factor(type, 
+                      levels=c("brier_boot", "brier_rest", "brier_opt"),
+                      labels = c('Brier Boot', 'Brier Rest', 'Brier Opt'))) %>%
+  ggplot(aes(x = ftype, y = value)) +
+  geom_boxplot() +
+  facet_wrap(~ftype, scales = 'free')
 
 ```
 
@@ -471,18 +477,234 @@ bsTafla[1:3] %>%
   facet_wrap(~type, scales = 'free')
 ```
 ```{r}
-bsTafla[7:9] %>%
+bsTafla[7:8] %>%
   gather(type, value) %>%
   ggplot(aes(x = type, y = value)) +
   geom_boxplot() +
   facet_wrap(~type, scales = 'free')
+
+bsTafla[9] %>%
+  gather(type, value) %>%
+  ggplot(aes(x = type, y = value)) +
+  geom_boxplot() +
+  facet_wrap(~type, scales = 'free')
+
+```
+```{r}
+bsTafla %>%
+  gather(type, value) %>%
+  ggplot(aes(x=type, y=value)) + 
+  geom_point() 
+
 ```
 
 ```{r}
-library(lme4)
 #Á ég ekki að hafa family = binomial frekar en poisson? 
-mfit <- glmer(correct ~ numQ*grade + (1|studentId), data = fullAnswerData, family = "binomial", nAGQ = 0)
+mfit <- glmer(correct ~ numQ*qdif + (1|studentId), data = fullAnswerData, family = "binomial", nAGQ = 0)
 summary(mfit)
 Anova(mfit, type="3")
+
+# Skoða brier og auc fyrir þetta líkan 
+B3 <- 1/nrow(fullAnswerData) * sum((fullAnswerData$correct - predict(mfit, type='response'))^2) 
+#Get líka fundið Brier skorið svona:
+mean((fullAnswerData$correct-predict(mfit, type='response'))^2)
+Bm3 <- mean(predict(mfit, type = 'response'))*(1-mean(predict(mfit, type='response'))) #Bm
+Bsd3 <- 1- (B3/Bm3) #Bsd standardized score. Því 
+#Mjög lítill breytileiki milli nemenda sem verður til þess að líkanið verður bara SMáaaáaáa betra
+
+```
+Gagnasafnsfræði: lykill ótvírætt ákvarðar röð í gagnasetti
+  group_nest: Er að búa til hlutmengi eftir lyklunum sem ég vel
+  Drögum þá nemendur en ekki alltaf bara random úr gögnum 
+Drasl eins og B eða C fylgið, tekur saman stikana
+20 ítranir í fikti - keyra 250 svo - 2000 ítranir nóg í lokin (500 tóku klst)
+Athuga þegar ég er sátt með líkanið muninn á nAGQ 0 vs 1. Núllið er að nálga eitthvað í heildi. Ef það er stóóóóor munur vil ég nota 1 en bs sjaldnar. 
+
+Kíkja á broom pakkann fyrir broom::tidy / broom::glance(fit) / broom::augment(fit)
+  Geggjað fall til að nota.
+
+```{r}
+fullAnswerData %>%
+  dplyr::select(studentId, lectureId,numQ, qdif,  correct)
+
+group_by(fullAnswerData, studentId, lectureId) %>%
+  group_nest() %>%
+  group_by(lectureId) %>%
+  mutate(n = n()) %>%
+  group_by(lectureId, n) %>%
+  group_nest() -> bs_full
+#200-500 ítranir   
+R = 10
+n = nrow(fullAnswerData)
+rows = 1:n 
+
+# 3 data frames for bootstrap results 
+B = data.frame(auc_boot=rep(0,R), 
+               auc_full=rep(0,R),
+               auc_opt = rep(0, R))
+C = data.frame(#brier_org=rep(0,R),
+               brier_boot=rep(0,R),
+               brier_full=rep(0,R),
+               brier_opt = rep(0, R))
+D = data.frame(#brier_org_sd=rep(0,R),
+               brier_boot_sd=rep(0,R),
+               brier_full_sd=rep(0,R),
+               brier_opt_sd=rep(0,R))
+
+set.seed(2504)
+time <- Sys.time()
+drasl <- tibble()
+for (i in 1:R) {
+  tmp <- tibble()
+  for(j in 1:nrow(bs_full)) {
+    n <- bs_full$n[j]
+    bs_full %>%
+      filter(lectureId == bs_full$lectureId[j]) %>%
+      unnest(cols = c(data)) %>%
+      dplyr::select(-n) %>%
+      sample_n(size = n, replace = T) %>%
+      unnest(cols = c(data)) -> bs_tmp
+    tmp <- rbind(tmp, bs_tmp)
+ 
+  }
+  mfit.boot <- glmer(correct ~ numQ*qdif + factor(lectureId) + (1|studentId),
+                      data=tmp, family = "binomial", nAGQ = 0)
+  # get predictions
+  boot.pred <- predict(mfit.boot, type = 'response')
+  full.pred <- predict(mfit.boot, newdata = fullAnswerData, type = 'response', allow.new.levels = T)
+  # calculate auc
+  B[i, 1] <- auc(roc(tmp$correct, boot.pred, quiet = T))[[1]]
+  B[i, 2] <- auc(roc(fullAnswerData$correct, full.pred, quiet =T ))[[1]]
+  B[i,3] <-  B[i,1]-B[i,2]
+  
+  # brier
+  C[i, 1] <- mean((tmp$correct - boot.pred)^2)
+  C[i, 2] <- mean((fullAnswerData$correct - full.pred)^2)
+  C[i,3] = C[i,1]-C[i,2]
+  
+  # brier sd
+  D[i,1] <- 1 - C[i,1]/(mean(boot.pred)*(1-mean(boot.pred)))
+  D[i,2] <- 1 - C[i,2]/(mean(full.pred)*(1-mean(full.pred)))
+  D[i,3] = D[i,1]-D[i,2]
+  
+  # 
+  # 
+   drasl <- rbind(drasl, mfit.boot %>% broom::tidy() %>% mutate(it = i))
+   if (i %% 10 == 0) {print(i)}
+}
+Sys.time() - time # 20 min fyrir 500 itranir
+drasl %>%
+  ggplot(aes(x = term, y = estimate)) +
+  geom_boxplot() #+ facet_wrap(~term, scales = 'free')
+
+m_bsTafla <- cbind(B,C,D)
+m_bsTafla
+
+```
+```{r}
+m_bsTafla[1:3] %>%
+  gather(type, value) %>%
+  ggplot(aes(x = value)) +
+  geom_density() +
+  facet_wrap(~type, scales = 'free')
+```
+```{r}
+m_bsTafla[4:6] %>%
+  gather(type, value) %>%
+  mutate(ftype=factor(type, 
+                      levels=c("brier_boot", "brier_full", "brier_opt"),
+                      labels = c('Brier Boot', 'Brier Rest', 'Brier Opt'))) %>%
+  ggplot(aes(x = ftype, y = value)) +
+  geom_boxplot() +
+  facet_wrap(~ftype, scales = 'free')
+
+m_bsTafla[7:9] %>%
+  gather(type, value) %>%
+  mutate(ftype=factor(type, 
+                      levels=c("brier_boot_sd", "brier_full_sd", "brier_opt_sd"),
+                      labels = c('Brier Boot Skill Score', 'Brier Full Skill Score', 'Brier Opt Skill score'))) %>%
+  ggplot(aes(x = ftype, y = value)) +
+  geom_boxplot() +
+  facet_wrap(~ftype, scales = 'free')
+```
+
+```{r}
+#Samanburður á líkönum (lægra AIC er betra)
+#mfit er hér besta líkanið mitt
+mfit0 <- glmer(correct ~ numQ*qdif + (1|studentId), data = fullAnswerData, family = "binomial", nAGQ = 0)
+mfit1 <- glmer(correct ~ numQ*qdif + (1|studentId), data = fullAnswerData, family = "binomial", nAGQ = 1)
+mfit2 <- glmer(correct~factor(numQ)*qdif + lectureId + (1|studentId), nAGQ = 0,
+              family = "binomial", 
+              data = fullAnswerData)
+mfit <- glmer(correct~factor(numQ)*qdif + factor(lectureId) + (1|studentId), nAGQ = 0,
+              family = "binomial", 
+              data = fullAnswerData)
+gmfit <- glmer(correct~factor(numQ)*grade + factor(lectureId) + (1|studentId), nAGQ = 0,
+              family = "binomial", 
+              data = fullAnswerData)
+
+
+anova(mfit,mfit2)
+summary(mfit)
+Anova(mfit,type="3")
+Anova(fit3, type = "3")
+
+fullAnswerData %>% 
+  modelr::add_predictions(mfit, type = 'response') %>%
+  ggplot(aes(x = pred, y = correct)) +
+  geom_smooth() +
+  geom_abline(intercept = 0, slope = 1, lty = 2)
+
+
+```
+
+
+```{r}
+fullAnswerData %>%
+  modelr::add_predictions(mfit, type = 'response') %>%
+  ggplot(aes(x = pred, y = correct)) +
+  geom_smooth() +
+  geom_abline(intercept =  0, slope = 1, lty = 2) +
+  coord_cartesian(xlim = c(0, 1), ylim = c(0,1))
+
+fullAnswerData %>%
+  modelr::add_predictions(gmfit, type = 'response') %>%
+  ggplot(aes(x = pred, y = correct)) +
+  geom_smooth() +
+  geom_abline(intercept =  0, slope = 1, lty = 2) +
+  coord_cartesian(xlim = c(0, 1), ylim = c(0,1))
+
+fullAnswerData %>%
+  modelr::add_predictions(fit3, type = 'response') %>%
+  ggplot(aes(x = pred, y = correct)) +
+  geom_smooth() +
+  geom_abline(intercept =  0, slope = 1, lty = 2) +
+  coord_cartesian(xlim = c(0, 1), ylim = c(0,1))
+
+fullAnswerData %>%
+  modelr::add_predictions(fit4, type = 'response') %>%
+  ggplot(aes(x = pred, y = correct)) +
+  geom_smooth() +
+  geom_abline(intercept =  0, slope = 1, lty = 2) +
+  coord_cartesian(xlim = c(0, 1), ylim = c(0,1))
+```
+Líkurnar vs. það sem líkanið spáir
+```{r}
+#Hér sé ég 
+data.frame(
+                 predi=predict(mfit, type='response'), 
+                 predi2=predict(fit4, type='response')) %>%
+  gather(p, v) %>%
+  ggplot(aes(x = v)) +
+  geom_histogram() +
+  facet_wrap(~p, scales = 'free')
+```
+```{r}
+ranef(mfit) %>%
+  as_tibble() -> ranef_m
+ranef_m %>% 
+  ggplot(aes(x=condval)) +
+  geom_density() +
+  geom_vline(xintercept = mean(ranef_m$condval), col="red")
 ```
 
