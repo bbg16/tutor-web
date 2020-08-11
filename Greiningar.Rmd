@@ -135,9 +135,12 @@ newdata4 <- within(newdata4, {
 head(newdata4)
 
 #Æjæj, smá vöntun hér...okeiokei orðið smá betra en eru þetta réttar upplýsingar? 
-ggplot(newdata4, aes(x = grade, y = PredictedProb)) + geom_ribbon(aes(ymin = LL,
-    ymax = UL, fill = numQ), alpha = 0.2) + geom_line(aes(colour = numQ),
-    size = 1)
+ggplot(newdata4, aes(x = grade, y = PredictedProb)) + 
+  geom_ribbon(aes(ymin = LL,
+    ymax = UL, fill = numQ), alpha = 0.2) + 
+  geom_line(aes(colour = numQ),
+    size = 1) +
+  scale_color_brewer(type = "seq", palette = "Set1")
 
 with(fit2, null.deviance - deviance)
 with(fit2, df.null - df.residual)
@@ -534,7 +537,7 @@ group_by(fullAnswerData, studentId, lectureId) %>%
   group_by(lectureId, n) %>%
   group_nest() -> bs_full
 #200-500 ítranir   
-R = 10
+R = 500
 n = nrow(fullAnswerData)
 rows = 1:n 
 
@@ -600,32 +603,47 @@ drasl %>%
 m_bsTafla <- cbind(B,C,D)
 m_bsTafla
 
+write_csv(x = m_bsTafla,path = 'Data/m_bsTafla.csv')
 ```
 ```{r}
-m_bsTafla[1:3] %>%
+AUC_boot_samanburdur <- m_bsTafla[1:3] %>%
   gather(type, value) %>%
+  mutate(type=factor(type, 
+                      levels=c("auc_boot", "auc_full", "auc_opt"),
+                      labels = c('AUC prófunargilda', 'AUC þjálfunargilda', 'Bjartsýni AUC gilda'))) %>%
   ggplot(aes(x = value)) +
   geom_density() +
-  facet_wrap(~type, scales = 'free')
+  labs(x="Gildi", y="Fjöldi")+
+  facet_wrap(~type, scales = 'free')+ 
+  scale_color_brewer(type = "seq", palette = "Set1")
+ggsave(filename = 'Data/AUC_boot_samanburdur.png', plot = AUC_boot_samanburdur, height = 6, width = 8, dpi = 320)
+
+
 ```
+
 ```{r}
-m_bsTafla[4:6] %>%
+Brier_boot_samanburdur <- m_bsTafla[4:6] %>%
   gather(type, value) %>%
   mutate(ftype=factor(type, 
                       levels=c("brier_boot", "brier_full", "brier_opt"),
-                      labels = c('Brier Boot', 'Brier Rest', 'Brier Opt'))) %>%
-  ggplot(aes(x = ftype, y = value)) +
+                      labels = c('Brier prófunargilda', 'Brier þjálfunargilda', 'Bjartsýni Brier skors'))) %>%
+ggplot(aes(x = ftype, y = value)) +
+  labs(x=" ", y="Gildi") +
   geom_boxplot() +
   facet_wrap(~ftype, scales = 'free')
+ggsave(filename = 'Data/Brier_boot_samanburdur.png', plot = Brier_boot_samanburdur, height = 6, width = 8, dpi = 320)
 
 m_bsTafla[7:9] %>%
   gather(type, value) %>%
   mutate(ftype=factor(type, 
                       levels=c("brier_boot_sd", "brier_full_sd", "brier_opt_sd"),
-                      labels = c('Brier Boot Skill Score', 'Brier Full Skill Score', 'Brier Opt Skill score'))) %>%
+                      labels = c('Staðlað Brier prófunargilda', 'Staðlað Brier þjálfunargilda', 'Bjartsýni staðlaðs Brier skors'))) %>%
   ggplot(aes(x = ftype, y = value)) +
+  labs(x=" ", y="Gildi") +
   geom_boxplot() +
   facet_wrap(~ftype, scales = 'free')
+
+
 ```
 
 ```{r}
@@ -692,17 +710,42 @@ Líkurnar vs. það sem líkanið spáir
 ```{r}
 #Hér sé ég 
 data.frame(
-                 predi=predict(mfit, type='response'), 
-                 predi2=predict(fit4, type='response')) %>%
+                 "mfit0"=predict(mfit0, type='response'), 
+                 "mfit"=predict(mfit, type='response')) %>%
   gather(p, v) %>%
   ggplot(aes(x = v)) +
-  geom_histogram() +
+  labs(x="Spáð útkoma", y="Fjöldi") +
+  geom_histogram(binwidth = 2*IQR(predict(mfit0, type='response')) * (length(predict(mfit0, type='response')))^(-1/3))  +
   facet_wrap(~p, scales = 'free')
+
 ```
+
+```{r}
+df <- data.frame(obs=fullAnswerData$correct, 
+                 "mfit0"=predict(mfit0, type='response'), 
+                 "mfit"=predict(mfit, type='response'))
+#Geri predict-in að dálkinum p og væntigildið fer í v, teikna svo upp samaburð á fit1 sem er glatað og fit 3 sem er betra
+df %>% 
+  gather(p,v,-obs) %>% 
+  ggplot(aes(x=v,y=obs)) + 
+  labs(x="Spáð útkoma", y="Raunveruleg útkoma")+
+  geom_smooth() + 
+  geom_abline(intercept = 0, slope=1, lty=2) + 
+  facet_wrap(~p, scales ='free')
+
+```
+```{r}
+bjartsyniAUC <- mean(m_bsTafla$auc_opt)
+bjartsyniBrier <- mean(m_bsTafla$brier_opt)
+bjartsyniBrierSd <- mean(m_bsTafla$brier_opt_sd)
+```
+
+
 ```{r}
 ranef(mfit) %>%
   as_tibble() -> ranef_m
-ranef_m %>% 
+
+ ranef_m %>% 
   ggplot(aes(x=condval)) +
   geom_density() +
   geom_vline(xintercept = mean(ranef_m$condval), col="red")

@@ -69,6 +69,10 @@ fullAnswerData <- inner_join(myAnswer,hashes)
 #Eftir að hafa skoðað missmap vil ég fjarlægja dálkana hash2 og hash3 og ugQuestionGuid
 fullAnswerData <- subset(fullAnswerData, select = -c(hash2,hash3,ugQuestionGuid))
 fullAnswerData <- na.omit(fullAnswerData)
+fullAnswerData <- subset(fullAnswerData, select = -c(practice,coinsAwarded,active)) 
+fullAnswerData <- subset(fullAnswerData, select = -c(qnType, correctChoices, incorrectChoices))
+fullAnswerData <- subset(fullAnswerData, select = -c(chosenAnswer, lectureVersion, plonePath, lastUpdate, title, qName, hash))
+
 #Bæti inn qdif
 qdif <- c(fullAnswerData$timesCorrect/fullAnswerData$timesAnswered)
 fullAnswerData <- cbind(fullAnswerData, qdif=qdif)

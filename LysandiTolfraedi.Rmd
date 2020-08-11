@@ -33,20 +33,30 @@ talningSpurninga
 ```
 
 ```{r}
-talningSvara <- ggplot(fullAnswerData, aes(x=numQ, fill=correct=="1")) + geom_bar() + labs(y="Fjöldi svara", x="Fjöldi svarmögueleika", fill="Rétt/Rangt")
+talningSvara <- ggplot(fullAnswerData, aes(x=numQ, fill=correct=="1")) + 
+  geom_bar() + 
+  labs(y="Fjöldi svara", x="Fjöldi svarmöguleika", fill="Svar") + 
+  scale_color_brewer(type = "seq", palette = "Set1") +
+  theme(legend.position = "bottom")
 talningSvara
 stakarSpurnignar <- unique(fullAnswerData$questionId)
 #Er fjöldi svara í réttu hlutfalli við fjölda spurninga í hvert skipti? 
+ggsave(filename = 'Data/talningSvara.png', plot = talningSvara, height = 6, width = 6, dpi = 320)
+
 ```
+
 ```{r}
 #Spurning hvort ég vilji sleppa rétt svör á móti réttum overall hérna (pælingin var bara að sjá hvar miðjan(1) liggur)
-einstakarSpurnignar <- group_by(fullAnswerData1, numQ)%>%summarise('Fjöldi spurninga(engin eins)'=n())
+einstakarSpurnignar <- group_by(fullAnswerData1, numQ)%>%summarise('Fjöldi ólíkra spurninga'=n())
 
 y <- sum(fullAnswerData$correct/nrow(fullAnswerData))
 
-svarmoguleikaTafla <- group_by(fullAnswerData, numQ) %>% summarise('Fjöldi svara'=n(), 'Fjöldi réttra svara'=sum(correct), 'Hlutfall réttra svara'=sum(correct)/n(), 'Rétt svör á móti réttum overall' = sum(correct)/n()/y)
+svarmoguleikaTafla <- group_by(fullAnswerData, numQ) %>% summarise('Fjöldi svara'=n(), 'Fjöldi réttra svara'=sum(correct), 'Hlutfall réttra svara'=sum(correct)/n())
+#, 'Rétt svör á móti réttum overall' = sum(correct)/n()/y)
 
+#write_csv(x = svarmoguleikaTafla, path = 'Myndir/svarmoguleikaTafla.csv')
 kable(inner_join(einstakarSpurnignar,svarmoguleikaTafla)) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+write_csv(inner_join(einstakarSpurnignar,svarmoguleikaTafla), path = 'Data/svarmoguleikaTaflaCSV.csv')
 ```
 ```{r}
 NUMQ <- c(2,3,4,5,6,7,8)
@@ -59,8 +69,13 @@ cbind(NUMQ,SPURNINGAR,SVOR)
 hlutfallRettra <- group_by(fullAnswerData, numQ) %>% summarise('hlutfall1'=sum(correct)/n(), 'hlutfall2'=sum(correct)/n()/y)
 ggplot(hlutfallRettra, aes(x=numQ, y=hlutfall1)) + geom_point() + geom_smooth(method = 'lm', color="cyan") + labs(x="Fjöldi svarmöguleika", y="Hlutfall réttra svara") 
 
+
+
 #Meðaleinkunn heildarinnar
 summarise(fullAnswerData, sum(correct/n()))
+
+
+
 
 ```
 
@@ -79,7 +94,9 @@ kable(spurningaTafla) %>% kable_styling(bootstrap_options = c("striped", "hover"
 
 ```{r}
 spurningaTaflaDF <- as.data.frame(spurningaTafla)
-ggplot(spurningaTaflaDF , aes(x = Svarmoguleikar, y = Hlutfallslega, group=Svarmoguleikar)) + geom_boxplot() +labs(x = "Meðal fjöldi svarmöguleika", y = "Heildareinkunn") + labs(title = "Samband fjölda svarmöguleika og einkunna") + geom_smooth(method = 'lm', color="cyan", aes(group=1))
+ggplot(spurningaTaflaDF , aes(x = Svarmoguleikar, y = Hlutfallslega, group=Svarmoguleikar)) + geom_boxplot() +labs(x = "Fjöldi svarmöguleika", y = "Einkunn ") + labs(title = "Samband fjölda svarmöguleika og einkunna") + geom_smooth(method = 'lm', color="cyan", aes(group=1)) 
+#+ geom_point(aes(x=Svarmoguleikar, y=1/Svarmoguleikar, color="red"))
+
 
 ```
 
@@ -97,7 +114,10 @@ nemendaTaflaDF <- as.data.frame(nemendaTafla)%>%filter(FjoldiSvaradraSpurninga >
 ggplot(nemendaTaflaDF , aes(x = Medaltal, y = Heildareinkunn)) + geom_point() +labs(x = "Meðal fjöldi svarmöguleika", y = "Heildareinkunn") + labs(title = "Samband fjölda svarmöguleika og einkunna") + geom_smooth(method = 'lm', color="cyan")
 #Hvað er að frétta hjá nemanda 18567 sem svaraði 10 spurningum og einni rétt
 glm(nemendaTaflaDF)
+
+
 ```
+
 ```{r}
 #Jæja þessi mynd er ekki að gera góða hluti. Ætlaði að gera fína logistic regression línu inn á hana...
 #Get líka ekki keyrt þetta nema vera með fit1 í environment-inu...
@@ -144,4 +164,5 @@ qdif <- c(fullAnswerData$timesCorrect/fullAnswerData$timesAnswered)
 fullAnswerData <- cbind(fullAnswerData, qdif=qdif)
   group_by(fullAnswerData, questionId) %>% count(qdif) 
 ```
+
 
