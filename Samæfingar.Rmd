@@ -1,0 +1,624 @@
+---
+title: "Stærðfræðikennsla með tutor-web í Kenía"
+subtitle: "Gagnagreining með klassískri tölfræði til að svara spurningunni hvort námsmönnum í Kenía fari í raun fram í stærðfræði með hjálp tutor-web kerfisins"
+author: "Birna Borg Gunnarsdóttir"
+output:
+  bookdown::pdf_document2:
+    fig_caption: yes
+    includes:
+    toc: no
+    keep_tex: yes
+fontsize: 10pt
+geometry: margin=1in
+graphics: yes
+---
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(knitr.kable.NA = '')
+
+source('settings.R') 
+library(tidyverse)
+library(aod)
+library(car)
+library(caret)
+library(ggthemes)
+library(pROC)
+library(lme4)
+library(ROCR)
+```
+
+
+```{r include=FALSE}
+twl <- read.csv('statusDevelopment.birna', sep = " ")
+#twl <- read_delim('statusDevelopment.birna', delim = " ")
+#read_delim()
+#Fjöldi svara
+twn <- read.csv('statusDevelopment.n', sep = " ")
+
+#Fjöldi réttra svara
+twr <- read.csv('statusDevelopment.r', sep = " ")
+```
+
+```{r include=FALSE}
+eink_stoduprof <- twl %>% group_by(studentId, library) %>% summarise('stoduprofseinkunn'=sum(correct)/18)
+mynd1 <- ggplot(eink_stoduprof, aes(y=stoduprofseinkunn*10, x=studentId, colour=library)) + geom_point() + labs(title="Eikunn nemenda á stöðuprófi eftir bókasafni", y="Stöðuprófseinkunn", x="Nemandi", colour="Bókasafn")+ scale_x_discrete(breaks = NULL) 
+
+#twl %>% group_by(library) %>% summarise('stoduprofseinkunn'=sum(correct)/n())
+
+#twl %>% group_by(library) %>% ggplot(aes(y=timeStart, x=correct)) + geom_point()
+
+#dim(twn)
+#sum(twn/18)
+```
+
+```{r include=FALSE}
+medaleink <- apply(twr,1,sum)/apply(twn,1,sum)
+plot(medaleink) 
+```
+
+
+```{r include=FALSE}
+twl %>% group_by(studentId) %>% arrange(timeStart) %>% mutate(timerank = row_number()) -> rammi
+summary(glm(data=rammi, correct ~ timerank +studentId + title))
+tapply(rammi$correct, rammi$timerank, mean)
+tapply(rammi$correct, rammi$title, mean)
+tapply(rammi$correct, rammi$drill, mean)
+table(rammi$drill)
+#p02q18 eru 3 æfingasett sem voru sameinuð í eitt
+table(rammi$drill,rammi$timerank)
+
+#glmm.fit<-glmm(correct ~ 0 + title+drill, random = list(~ 0 + studentId), varcomps.names = c("S"), data = statusDevelopment.table, family.glmm = bernoulli.glmm,m=500)
+
+#setja líka questionId(title) 
+library(lme4)
+library(lmerTest)
+#Spurning að skipta drill ut fyrir timerank og sjá hvaða áhrif það hefur
+#glmer.fit<-glmer(correct ~ timerank+(1| studentId), data = rammi,family=binomial(link=logit))
+# anova(glmer.fit, test = "F")
+```
+
+
+```{r include=FALSE}
+load('timeAced.birna') 
+timeAced.birna$drill<-substring(timeAced.birna$drill, 1,6)
+timeAced.birna <- timeAced.birna %>% group_by(studentId, drill) %>% arrange(studentId, drill) %>% slice(1)
+#timeAced.birna%>%group_by(studentId,drill)%>%summarise(timeAced=min(timeAced))
+timeAced.birna <- filter(timeAced.birna, drill != "qtotal")
+timeAced.birna %>% group_by(studentId) %>% arrange(timeAced) %>% mutate(numberAced = row_number()) -> rammi2
+rammi3 <- left_join(rammi,rammi2)
+
+rammi3 <- subset(rammi3, select = c(studentId, library, title, drill, correct, grade, numberAced))
+
+#view(arrange(rammi3, studentId, title))
+#table(rammi3$studentId, rammi3$numberAced)
+#rammi3$numberAced
+ggplot(rammi3, aes(y=numberAced, x=studentId)) + geom_point()
+#table(rammi3$numberAced)
+#unique(twl$drill)
+#table(timeAced.birna$drill)
+#tapply(numberAced, )
+```
+
+
+```{r include=FALSE}
+#Hvert safn sem þú svarar 
+exp(0.03271)
+plot(tapply(rammi3$correct, rammi3$numberAced, mean))
+table(rammi3$numberAced)
+rammi3$numberAcedFlokkur <- cut(rammi3$numberAced,c(1,5,10,15,20,25,30,39), left=T, include.lowest = T)
+table(rammi3$numberAcedFlokkur)
+
+glm.fit <- glm(data = rammi3, correct ~ numberAcedFlokkur, family = binomial(link=logit))
+summary(glm.fit)
+Anova(glm.fit)
+
+glmer.fit0<-glmer(correct~ (1| studentId), data = rammi3, family=binomial(link=logit))
+summary(glmer.fit0)
+Anova(glmer.fit0, type = 3)
+
+glmer.fit<-glmer(correct ~ numberAcedFlokkur +(1| studentId), data = rammi3, family=binomial(link=logit))
+summary(glmer.fit)
+Anova(glmer.fit, type = 3)
+
+glmer.fit2<-glmer(correct ~ numberAcedFlokkur + title + (1| studentId), data = rammi3, family=binomial(link=logit))
+summary(glmer.fit2)
+Anova(glmer.fit2, type = 3)
+
+
+#exp(1,9637)=næstum 7, þannig að odds 7 á síðasta flokkinn
+#glmer.fit3<-glmer(correct ~ numberAcedFlokkur + title + grade +(1| studentId), data = rammi3, family=binomial(link=logit))
+#summary(glmer.fit3)
+#Anova(glmer.fit3, type = 3)
+
+#studentId, library, title, drill, correct, grade, numberAced, numberAcedFlokkur
+glmer.fit.allt <- glmer(correct ~ (1| studentId) + library + title + drill+ numberAcedFlokkur, data = rammi3, family=binomial(link=logit))
+#summary(glmer.fit.allt, type = 3)
+
+
+
+#Reyna að finna út p-gildi
+```
+
+```{r include=FALSE}
+rammi3 %>% group_by(studentId) %>% summarise('Klarad.ad.medaltali' = mean(numberAced), 'medaleinkunn'=(sum(correct)/18)*10) ->tafla
+mynd2 <- ggplot(tafla, aes(x=Klarad.ad.medaltali, y=medaleinkunn)) + geom_point() + geom_smooth(method = 'loess') + 
+  labs(x="Meðalfjöldi kláraðra spurningasetta", y="Einkunn á stöðuprófi", title = "Kláruð spurningasett á móti einkunn á stöðuprófi nemenda")
+lm.fit <- lm(data = rammi3, correct ~ numberAced)
+summary(lm.fit)
+```
+
+```{r eval=FALSE, include=FALSE}
+#Skoða nákvæmni mælinga
+p1 <- predict(glmer.fit, rammi3, type="response")
+pr1 <- prediction(p1, rammi3$correct)
+prf1 <- performance(pr1, measure = "tpr", x.measure = "fpr")
+plot(prf1)
+
+#(auc=area under the curve)
+auc1 <- performance(pr1, measure = "auc")
+auc1 <- auc1@y.values[[1]]
+#Get líka fundið Brier skorið svona: 
+brier1 <- mean((rammi3$correct-predict(glmer.fit, type='response'))^2)
+brierm1 <- mean(predict(glmer.fit, type = 'response'))*(1-mean(predict(glmer.fit, type='response'))) #Bm
+briersd1 <- 1- (brier1/brierm1) #Bsd standardized score. Því 
+```
+
+```{r eval=FALSE, include=FALSE}
+#Skoða nákvæmni mælinga
+p2 <- predict(glmer.fit2, rammi3, type="response")
+pr2 <- prediction(p2, rammi3$correct)
+prf2 <- performance(pr2, measure = "tpr", x.measure = "fpr")
+plot(prf2)
+
+#(auc=area under the curve)
+auc2 <- performance(pr2, measure = "auc")
+auc2 <- auc2@y.values[[1]]
+#Get líka fundið Brier skorið svona: 
+brier2 <- mean((rammi3$correct-predict(glmer.fit2, type='response'))^2)
+brierm2 <- mean(predict(glmer.fit2, type = 'response'))*(1-mean(predict(glmer.fit2, type='response'))) #Bm
+briersd2 <- 1- (brier2/brierm2) #Bsd standardized score. Því 
+```
+
+
+\begin{center}
+\textbf{Útdráttur}
+
+
+\textit{Stiklað á stóru um efnið, líklega það síðasta sem ég skrifa}
+\end{center}
+
+# Inngangur
+
+## Saga tutor-web
+Tutor-web er rafrænt kennslukerfi sem inniheldur hafsjó af námsefni, sýnidæmum og fjölvalsspurningum með áherslu á stærðfræði og tölfræði. Kerfið byrjaði sem hugverk Gunnars Stefánssonar prófessors í tölfræði við Háskóla Íslands í upphafi aldarinnar en markmið þess er að hvetja nemendur til að læra og dýpka skilning sinn á námsefni í stað þess að leggja á minnið og komast í gegnum verkefni hugsunarlaust. 
+
+## Eiginleikar tutor-web
+Segja frá því hvernig einkunnin breytist og meira tillit sé tekið til spurninga sem var nýlega svarað. Útskýra í leiðinni að þegar einkunnin er komin í 9,75 teljist nemandi hafa náð takmarkinu. Segja líka frá því að þegar spurningu hefur verið svarað komi útskýring sem nemandi getur notað til að dýpka skilning sinn á efninu. 
+
+
+## Verkefnið Education in a Suitcase í Kenía
+Árið 2015 fór fólkið á bakvið tutor-web í verkefni sem fékk heitið Education in a Suitcase sem þýða mætti sem nám í ferðatösku í þeim tilgangi að auka aðgengi og bæta stærðfræðikennslu á lágtekju svæðum. Áhersla var lögð á stærðfræði á menntaskólastigi í Kenía en í mörgum tilfellum hafa nemendur ekki aðgang að bókum eða nettengingu og rafmagn er óstöðugt. 
+Því var brugðið á það ráð að dreifa efninu í spjaldtölvum sem fluttar voru í ferðatösku frá Íslandi á bókasöfn í Kenía þar sem nemendur hafa aðgang að efni tutor-web án nettengingar. 
+
+Með spjaldtölvuna í hendi sér getur nemandi því stofnað aðgang og byrjað að læra og svara spurningum sem eru aðlagaðar aðalnámskrá í Kenía. Þannig vinnur nemandinn sér inn einkunn en samhliða safnar nemandi rafmyntinni SmileyCoin sem er samtengd kerfinu. Rafmyntin er hugsuð sem aukin hvatning þar sem nemandi sem safnar sér inn einni milljón SmileyCoins getur keypt spjaldtölvuna.
+
+# Aðferð 
+
+## Framkvæmd
+Rannsóknarsnið var afturskyggn gagnarannsókn. Notast var við gögn úr gagnagrunni tutor-web kerfisins sem
+tilheyra fyrirlestrum sem uppfylla kröfur aðalnámskrár Kenía. Námsefnið er í tveimur hlutum KCSE Part 1 og KCSE Part 2. Innan hvors hluta er fjöldi spurningasetta sem hvert um sig inniheldur fjölda spurninga. Í öllum þessum fjölda spurninga eru 18 spurningar sem sérstaklega eru merktar sem stöðuprófsspurningar. Í þessari gagnagreiningu eru svör nemenda í stöðuprófinu notuð til að spá fyrir um það hvort fjöldi spurningasetta sem nemandi hefur klárað með 9,75 eða hærri einkunn hafi áhrif á komandi svör nemandans. Með öðrum orðum hvort nemandi læri á því að fara í gegnum spurningarsett í tutor-web kerfinu.  
+
+## Þáttakendur
+Gagnaskráin sem notast var við inniheldur gögn frá 55 einstaklingum. Þessir 55 einstaklingar höfðu allir farið í gegnum bæði fyrri og seinni hluta námsefnisins að lágmarki með einkunnina 9,75 í hverju spurningasetti. Auk þess svöruðu allir þessir nemendur þeim 18 stöðuprófsspurningum sem finna má í báðum hlutum KCSE. Þessum spurningum var svarað í tutor-web á tímabilinu frá ágúst 2021 fram í febrúar 2022 á sex bókasöfnum í Kenía. 
+Gögnin eru ekki rekjanleg til einstaklinga þar sem hverjum nemanda er eingöngu úthlutað nemendanúmeri.
+
+# Tölfræðileg úrvinnsla
+
+## Hugbúnaður
+Öll tölfræðileg úrvinnsla, meðhöndlun gagna og líkanasmíð fór fram á forritunarmálinu R version 3.6.2 í viðmótinu RStudio v1.2.5033. Sjá má yfirlit yfir pakka innan R sem notaðir voru við vinnslu verkefnisins.
+
+```{r table0, echo=F}
+data.frame(Pakki = c("dbplyr", "dplyr", "RMySQL", "tidyr", "MASS", "tidyverse", "tinytex", 
+                      "kableExtra", "aod", "car", "caret", "ggthemes", "pROC", "lme4"), 
+           Útgáfa = c("v 1.4.2", "v 0.8.3", "v 0.10.20", "v 1.0.0", "v 7.3-51.4", 
+                      "v 1.3.0", "v 0.23", "v 1.1.0", "v 1.3.1", 
+                      "v 3.0-8", "v 6.0-86", "v 4.2.0", "v 1.16.2", "v 1.1-23")) %>% 
+  kable(digits = 4, booktabs = T, 
+     caption = "Pakkar í R", 
+     linesep = '') %>% 
+  kable_styling(latex_options = "hold_position", position = "center") %>%
+  row_spec(row = 0, bold = T)
+```
+
+*Ekki víst að ég noti alla þessa pakka og kannski bætist einhver við, passa að yfirfara það í lokin* 
+
+## Kóði 
+Allan kóða verkefnisins má nálgast á Github með vefslóðinni https://github.com/birnaborg/tutor-web.
+
+## Gögn
+Gögnin fengust úr gagnagrunni tutor-web hjá Gunnari Stefánssyni. Þaðan voru síuð þau gögn sem tilheyra þeim nemendendum sem svarað höfðu öllum æfingasettum í þeim tveimur flokkum sem tilheyra framhaldsskólanámi í stærðfræði í Kenía. Gögnin tilgreina niðurstöður stöðuprófsspurninga sem lagðar voru fyrir af handahófi á meðan nemandi vann í einhverju æfingasettanna. Einnig var bætt inn breytunni *numberAced* sem tilgreinir hve mörg æfingasett nemandi hafi klárað með fullnægjandi hætti áður en hann svaraði tiltekinni stöðuprófsspurningu. 
+
+Eftir að gögnin voru síuð stóð eftir gagnarammi með 990 röðum sem hver stóð fyrir eitt svar eins nemanda við stöðuprófsspurningu. Dálkar gagnasafnsins voru 15 en frekari útlistun á breytum gagnasafnsins má sjá í töflu \@ref(tab:table1) í viðauka. 
+
+# Lýsandi tölfræði 
+Hér má sjá upplýsingar úr gögnum á myndrænan hátt. 
+
+```{r einkunnStoduprofi, echo=FALSE, fig.align='center', fig.cap="Einkunn nemenda á stöðuprófi eftir bókasafni", fig.pos='H', message=FALSE, warning=FALSE, out.width='70%'}
+mynd1
+```
+
+Þegar frammistaða nemendanna 55 er skoðuð með tilliti til þess hvar spurningunum var svarað má sjá að meiri hluti nemenda fær nær 10 í einkunn á stöðuprófi. Einungis einn nemandi svarar á bókasöfnunum knlsKiberia og TaniaCentre
+
+
+```{r talningSpurningasetta, echo=FALSE, fig.align='center', fig.cap="Kláruð spurningasett á móti einkunn á stöðuprófi", fig.pos='H', message=FALSE, warning=FALSE, out.width='70%'}
+mynd2
+```
+
+```{r}
+#Gunnar gerði
+#lines(statDev$x,fitted(loess(y~x,data=statDev))) # good
+```
+
+```{r hlutfallSpurningasetta, echo=FALSE, fig.align='center', fig.cap="Hlutfall réttra/rangra svara á móti fjölda kláraðra spurningasetta", fig.pos='H', message=FALSE, warning=FALSE, out.width='70%'}
+ggplot(rammi3, aes(fill=factor(correct), x=numberAcedFlokkur)) + geom_bar(position = "fill") + labs(y="Hlutfall", x="Fjöldi æfingasetta sem nemandi hefur þegar klárað", title = "Hlutfall réttra/rangra svara á móti fjölda kláraðra æfingasetta", fill="Rangt/rétt")
+
+table(rammi3$numberAcedFlokkur, rammi3$correct)
+ggplot(rammi3, aes(x=numberAcedFlokkur, fill=factor(correct))) + geom_bar(position = "dodge") + labs(y="Hlutfall", x="Fjöldi æfingasetta sem nemandi hefur þegar klárað", title = "Hlutfall réttra/rangra svara á móti fjölda kláraðra æfingasetta", fill="Rangt/rétt")
+```
+
+Þegar meðaltal kláraðra spurningasetta er teiknað upp á móti einkunn sem nemandi fékk á stöðuprófi og besta beina lína teiknuð í gegnum gögnina má sjá að niðurstöðurnar gætu bent til þess að nemandi sé líklegri svara rétt og fá betri einkunn á stöðuprófi eftir því sem hann hefur klárað fleiri spurningasett. 
+
+```{r}
+ggplot(rammi3, aes(fill=factor(correct), x=title)) + geom_bar(position = "fill") + labs(y="Hlutfall", x="Stöðuprófsspurning", title = "Hlutfall réttra/rangra svara á móti stöðuprófsspurningu", fill="Rangt/rétt") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+
+# Líkanasmíð
+
+## Gerð líkana
+
+Við gerð líkana voru sett saman ólík líkön og þau borin saman. 
+Í upphafi var notast við hefðbundna tvíkosta aðhvarfsgreiningu en síðar var farið í tvíkosta aðhvarsgreiningu með tilliti til slembiþátta. 
+Öll líkönin innihéldu svarbreytuna *correct*. Breytan er tvíkosta breyta sem segir til um hvort spurningu hafi verið svarað rétt (1) eða rangt (0). Í slembiþáttalíkönunum var slembiþátturinn breytan *studentId*. Notast var við þá breytu til þess að taka tillit til ólíkrar færni milli nemenda.
+
+## Útvíkkað línulegt slembiþáttalíkan
+Svarbreyta líkansins, *correct* er tvíkosta breyta og í slíkum tilfellum liggur beinast við að nota tvíkosta aðhvarfsgreiningu við gerð líkans. Þar sem hver nemandi svarar 18 spurningum í stöðuprófi er ekki hægt að fullyrða um óhæði mælinga því 18 línur gagnanna tilheyra sama nemanda. Því er auðkenni nemanda, breytan *studentId*, tekin inn sem slembiþáttur. Þannig verður nauðsynlegt að víkka greininguna í útvíkkað línulegt slembiþáttalíkan til að tekið sé tillit til þess að svör nemanda eru ekki óháð. 
+
+Eftirfarandi undirkaflar sýna helstu niðurstöður sem þarf til að framkvæma greininguna. 
+
+### Þéttiföll
+
+Þéttifall er samfellt fall sem lýsir líkindadreifingu samfelldrar slembistærðar og kallast graf þess þéttiferill. Flatarmálið undir þéttiferlinum milli tveggja stærða $a$ og $b$ er jafnt líkunum á því að slembistærðin taki gildi á milli $a$ og $b$.
+
+Þéttifall er táknað með $f_y(\theta)$ og er sagt tilheyra exponantial fjölskyldunni ef það má rita á forminu  
+
+$$f_y(\theta)=h(y)exp(\eta(\theta)T(y)-A(\theta)),$$
+þar sem $T(y)$ er nægjanleg slembistærð, $\eta$ er *náttúrulegi stikinn* og $A(\theta)$ is the logrinn af normalizing factor which ensures that $f_y(\theta)$ er þéttifall.
+
+### Dreifingar
+
+Látum breytuna correct vera táknaða með $Y_i$ þar sem $i$ er i-ta svartilraun. Þar sem $Y_i$ getur aðeins tekið gildin 1 eða 0 getum við skrifað
+$$P(Y_i=1)=\pi_i \quad \text{og} \quad P(Y_i=0)=1-\pi_i$$
+Táknum líkurnar á réttu svari við spurningu $i$ með $\pi_i$ og þá eru líkurnar á röngu svaru $1-\pi_i$.
+Þetta gefur okkur Bernoulli dreifingu með líkindafall (e. probability mass function)
+$$P(Y_i=y_i)=\pi_i^{y_i}(1-\pi_i)^{1-y_i}$$
+Væntigildi Bernoulli dreifingarinnar er $E[Y_i]=\pi_i$ og dreifnin er $Var[Y_i]=\pi_i(1-\pi_i)$. Athugum að Bernoulli dreifing tilheyrir veldisvísisfjölskyldunni og líkindafall þess má skrifa sem 
+$$P(Y_i=y_i)=exp \{ y_i \log(\frac{\pi_i}{1-\pi_i})+\log(1-\pi_i) \}$$
+þar sem $h(y)=1, T(y_i)=y_i, \eta(\pi_i)=\log(\pi_i/(1-\pi_i))$ og $A(\pi_i)=-\log(1-\pi_i)$
+
+### Tvíkosta aðhvarfsgreining
+Látum $Y$ vera vigur af stærð $n \times 1$ þar sem $n$ er fjöldi mælinga. Þá er línulega líkanið 
+$$Y=X\beta + \epsilon, \quad \epsilon \sim N(0,\sigma^2), \quad \sigma > 0$$
+þar sem $X$ er fylki af stærð $n \times k$ og $\beta$ er vigur af stærð $k\times 1$ sem samanstendur af stikum líkansins sem á að meta. 
+Þegar gert er ráð fyrir línulegri aðhvarfsgreiningu þá er $Y_i$ slembistærð þannig að $Y_i \sim N(x_i^T \beta, \sigma^2 I_n)$
+Burt séð frá því, þar sem svarbreytan $Y_i$ tekur bara gildin 0 eða 1 þá er dreifing þess Bernoulli dreifingin. Auk þess getur líkanið, þegar gert er ráð fyrir línulegri aðhvarfsgreiningu, spáð gildum utan bilsins $[0,1]$. Til að koma í veg fyrir þetta vandamál þarf að takmarka bilið með neðri mörkum 0 og efri mörkum 1. Þetta má gera með því að íhuga gagnlíkindahlutfall (e. odds-ratio) $\pi_i/(1-\pi_i)$ sem getur tekið hvaða jákvæða gildi sem er og svo *log-odds*
+$$\eta_i := \log(\frac{\pi_i}{1-\pi_i})=g(\pi_i)$$
+The log-odds $\eta_i$ geta tekið hvaða ruantölugildi sem er, ($\eta_i \in \mathbb{R}$), ef takmörkin eiga ekki lengur við. Andhverfa fallsins $g(.)$ er
+$$\pi_i=g^{-1}(\eta_i)=\frac{\exp(\eta_i)}{1+\exp(\eta_i)}=\frac{1}{1+\exp(-\eta_i)}$$
+sem samræmist fyrri niðurstöðu. Líkanið eftir *logistic link function* umbreytingu er þá 
+$$E(Y_i)=\mu_i=g^{-1}(x_i^T \beta) = \frac{1}{1+\exp(-x_i^T \beta)}$$
+
+
+## Val á líkani
+Í upphafi líkanagerðarinnar var notast við venjulega tvíkosta aðhvarfsgreiningu með háðu breytuna correct og spábreytuna numberAced, sem stendur fyrir fjölda lokinna æfingasetta á tilteknum tíma. Í kjölfarið var ólíkum spábreytum bætt inn og áhrif þeirra á líkönin skoðuð.
+
+Í síðari líkönum var notast við tvíkosta aðhvarfsgreiningu með tilliti til slembiþátta og breytan studentId bættist við sem slembibreyta. Einnig var smíðað líkan sem tekur inn breytuna title sem er auðkenni stöðuprófsspurningarinnar. 
+
+Við val á líkani voru borin saman matsgæði líkana og eftir stóðu tvö líkön sem skoðuð verða betur. Þau má sjá í töflu \ref{tab:table3} hér að neðan. 
+
+## Samanburður matsgæða
+
+Við val á líkani voru borin saman matsgæði líkana og eftir stóðu tvö líkön sem skoðuð verða betur. Þau má sjá í töflu \ref{tab:table3} hér að neðan. 
+
+```{r table3, echo=F}
+
+data.frame('Líkan' = c("glmer.fit","glmer.fit2"), 
+           'Háð Breyta' = c("correct", "correct"),
+           'Breytur' = c("numberAcedFlokkur", "numberAcedFlokkur + title"),
+           'Slembiþáttur' = c("studentId","studentId")) %>%
+  kable(col.names = c("Líkan","Háð breyta", "Breytur", "Slembiþáttur"), digits = 4, booktabs = T, 
+     caption = "Líkön til skoðunar", 
+     linesep = '') %>% 
+  kable_styling(latex_options = "hold_position") %>%
+  row_spec(row = 0, bold = T)
+```
+
+Stuðla líkananna tveggja má skoða í viðauka. Tafla \ref{tab:glmerfitTable} í sýnir stuðla líkansins glmer.fit og stuðla líkansins glmer.fit2 má sjá í töflu \ref{tab:glmerfit2Table}. 
+
+
+## Samanburður matsgæða
+Til að bera saman líkönin var settur fram Anova samanburður, af gerð þrjú. Niðurstöður Anova samanburðarins má sjá í töflu \ref{tab:Anova}.
+```{r Anova, echo=F, message=FALSE, warning=FALSE}
+T1 <- Anova(glmer.fit0, type = 3) %>% broom::tidy() %>% mutate(model = "glmer.fit0")
+
+T2 <- Anova(glmer.fit2, type = 3) %>% broom::tidy() %>% mutate(model = "glmer.fit2")
+
+T3 <- Anova(glmer.fit.allt, type = 3) %>% broom::tidy() %>% mutate(model = "glmer.fit.allt")
+
+
+aTable <- rbind(T1,T2,T3) %>%
+  dplyr::select(5, everything())
+
+aTable %>% kable(booktabs = T, 'latex',
+        caption = 'Anova af gerð III fyrir líköninn þrjú',
+        linesep = '',
+        col.names = c('Líkan', 'Breyta', 'Lýsitala', 'Frígráður', '$p$'),
+        escape = F,
+        align = rep('c', 5)) %>%
+  kable_styling(full_width = F, latex_options = 'hold_position') %>%
+  row_spec(row = 0, bold = T) %>%
+  collapse_rows(1)
+
+```
+exp(5.4363)/(1+exp(5.4363))
+
+Í töflu \ref{tab:Anova} má sjá marktækni breytanna í líkönunum tveimur. 
+
+Tafla \ref{tab:table4} sýnir þrjá stuðla sem nota má til þess að meta gæði líkansins. Við val á líkani leitumst við eftir sem hæstum AUC stuðli, sem lægstu Brier skori og sem hæstu stöðluðu Brier skori. Við sjáum hér að líkanið glmer.fit2 hefur nauma yfirburði þegar allir þrír stuðlar eru skoðaðir. 
+```{r table4, eval=FALSE, include=FALSE}
+data.frame('Líkan' = c("glmer.fit", "glmer.fit2"),
+           'AUC' = c(auc1, auc2),
+           'Brier' = c(brier1,brier2),
+           'Staðlað Brier' = c(briersd1,briersd2)) %>%
+  kable(digits = 4, booktabs = T,
+     caption = "Samanburður líkana",
+     linesep = '') %>%
+  kable_styling(latex_options = 'hold_position' ) %>%
+  row_spec(row = 0, bold = T)
+```
+
+
+Hér að neðan í töflu \ref{tab:anova01tafla} má sjá anova samanburð á líkönunum tveimur og mismun á stuðlum þeirra. Leitast er eftir lægra AIC og BIC en hærra logLik er betra (það er lægra tölugildi). Þar með sjáum við að líkanið glmer.fit2 hefur yfirburði þegar tekið er tillit til AIC og lokLik en hins vegar gefur glmer.fit betri niðurstöður þegar litið er til BIC gilda.
+
+```{r anova01tafla, eval=FALSE, warning=FALSE, include=FALSE}
+options(tinytex.verbose = TRUE)
+ an01 <- anova(glmer.fit, glmer.fit2) %>% broom::tidy()
+ an01$term <- c("glmer.fit", "glmer.fit2")
+
+an01 %>% kable(digits = 4, booktab = T,
+               caption = "anova samanburður á líkönum",
+               linesep = '',
+               col.names = c("Líkan", "npar", "AIC", "BIC", "logLik", "deviance",
+                             "statistic", "df", "p.value")) %>%
+  kable_styling(latex_options = 'hold_position') %>%
+  row_spec(row = 0, bold = T)
+
+```
+
+## Frekari athugun 
+
+# Niðurstaða
+Markmið verkefnisins var að skoða hvort nemendum í Kenía fari fram í stærðfræði með hjálp tutor-web kerfisins. Til þess voru gögn tutor-web gagnagrunnsins skoðuð, þau síuð og sett fram á myndrænan hátt til þess að draga fram þær niðurstöður sem gagnagrunnurinn hafði að geyma. Við vinnslu á gögnunum mátti sjá að ef tekin voru saman þau 990 svör sem tilheyrðu spurningum í aðalnámsrká Kenía í stærðfræði á framhaldsskólstigi mátti sjá að þeir nemendur sem klára öll spurningasett með viðunnandi einkunn fá að meðaltali stöðuprófseinkunn upp á 8,77. Við frekari athugun mátti sjá að því fleiri spurningasettum sem nemandi hafði svarað jukust líkurnar á því að svarað væri rétt. 
+Eftir að hafa sett gögnin fram á myndrænan hátt var tekist handa við líkanagerð. Sett voru saman ólík líkön með því markmiði að lokalíkanið gæti á einhvern hátt spáð fyrir um það hvernig nemandi svarar. Við líkanagerð kom í ljós að fjöldi spurningasetta sem svarað hafði verið með viðunnandi árangri hafði marktæk áhrif. 
+
+Það er að líklegra er að nemandi svari rétt því fleiri æfingasett sem hann hefur klárað. 
+
+Tekið var tillit til þess að nemendur væru ólíkir og til þess að spurnignarnar væru ekki þær sömu. Þær breytur voru allar marktækar og sýndu fram á að þokkalega væri hægt að spá fyrir um svar nemanda. 
+
+
+# Viðauki 
+
+*Þarf líka að prenta Tafla en ekki Table...* 
+```{r table1, echo=F}
+data.frame(Breyta = c("studentId", 
+                      "library", 
+                      "title", 
+                      "drill", 
+                      "correct", 
+                      "grade",
+                      "timeAced",
+                      "numberAced",
+                      "numberAcedFlokkur"), 
+           Tegund = c("Merkibreyta", 
+                      "Flokkabreyta",
+                      "Flokkabreyta", 
+                      "Flokkabreyta", 
+                      "Tvíkosta breyta", 
+                      "Samfelld breyta",
+                      "Tímaraðabreyta",
+                      "Talnabreyta",
+                      "Flokkabreyta"),
+           Skýring = c("Númer nemenda", 
+                       "Heiti bókasafnsins sem hýsir spjaltölvuna", 
+                       "Númer stöðuprófsspurnignar",
+                       "Heiti fyrirlesturs sem sem nemandi var í þegar spurningin birtist", 
+                       "Rétt/rangt svar við stöðuprófsspurningu",
+                       "Einkunn sem nemandi hefur eftir að hafa svarað spurningu",
+                       "Tími þegar nemandi náði 9,75 í tilteknu æfingasetti",
+                       "Fjöldi æfingasetta sem nemandi hafði náð 9,75 í á tíma timaAced",
+                       "Flokkar nemendur eftir því hve mörgum æfingasettum nemandi hefur lokið")) %>% 
+  kable(digits = 4, booktabs = T, 
+     caption = "Breytur í gagnasetti", 
+     linesep = '') %>% 
+  kable_styling(latex_options = "hold_position") %>%
+  row_spec(row = 0, bold = T)
+```
+
+
+
+```{r glmerfitTable, echo=F, message=FALSE, warning=FALSE}
+glmer.fit.coef <- summary(glmer.fit)$coefficients %>% as.data.frame() %>% 
+  add_column(odds = exp(summary(glmer.fit)$coefficients[,1]), .after = 0)
+colnames(glmer.fit.coef) <- c("Gagnalíkindi", "Mat á stika", "Staðalskekkja", "Prófstærð", "p-gildi")
+
+glmer.fit.coef <- glmer.fit.coef %>% add_row(.after = 1)
+row.names(glmer.fit.coef) <- c("Skurðpunktur", 
+                          "Flokkur 1 (viðmið)", 
+                          "Flokkur 2", 
+                          "Flokkur 3",
+                          "Flokkur 4", 
+                          "Flokkur 5", 
+                          "Flokkur 6",
+                          "Flokkur 7")
+glmer.fit.coef %>% kable(digits = 4, booktabs = T, 
+                    caption = "Stuðlatafla fyrir spálíkanið glmer.fit", 
+                    linesep = '') %>% 
+  kable_styling(full_width = T, font = 7) %>% 
+  pack_rows("Skurðpunktur", 1,2, hline_after = T) %>%
+  pack_rows("Flokkur fjölda svaraðra spurningasetta", 2, 8, hline_after = T) %>%
+  row_spec(row = 0, bold = T)
+
+```
+
+```{r glmerfit2Table, echo=F, message=FALSE, warning=FALSE}
+glmer.fit2.coef <- summary(glmer.fit2)$coefficients %>% as.data.frame() 
+# %>% add_column(odds = exp(summary(glmer.fit2)$coefficients[,1]), .after = 0)
+
+colnames(glmer.fit2.coef) <- c("Mat á stika", "Staðalskekkja", "Prófstærð", "p-gildi")
+
+glmer.fit2.coef <- glmer.fit2.coef %>% add_row(.after = 1) %>% add_row(.after = 8)
+row.names(glmer.fit2.coef) <- c("Skurðpunktur", 
+                          "Flokkur 1 (viðmið)", 
+                          "Flokkur 2", 
+                          "Flokkur 3",
+                          "Flokkur 4", 
+                          "Flokkur 5", 
+                          "Flokkur 6", 
+                          "Flokkur 7",
+                          "Spurning 1 (viðmið)", 
+                          "Spurning 2",
+                          "Spurning 3", 
+                          "Spurning 4",
+                          "Spurning 5", 
+                          "Spurning 6",
+                          "Spurning 7",
+                          "Spurning 8", 
+                          "Spurning 9",
+                          "Spurning 10", 
+                          "Spurning 11",
+                          "Spurning 12",
+                          "Spurning 13", 
+                          "Spurning 14",
+                          "Spurning 15", 
+                          "Spurning 16",
+                          "Spurning 17", 
+                          "Spurning 18")
+glmer.fit2.coef %>% kable(digits = 4, booktabs = T, 
+                    caption = "Stuðlatafla fyrir spálíkanið glmer.fit2", 
+                    linesep = '') %>% 
+  kable_styling(full_width = T, font = 7) %>% 
+  pack_rows("Skurðpunktur", 1,2, hline_after = T) %>%
+  pack_rows("Flokkur fjölda svaraðra spurningasetta", 2, 8, hline_after = T) %>%
+  pack_rows("Stöðuprófsspurning", 9, 26, hline_after = T) %>%
+  row_spec(row = 0, bold = T)
+```
+```{r}
+tulkunlikans <- glmer.fit2.coef <- summary(glmer.fit2)$coefficients %>% as.data.frame()
+colnames(tulkunlikans) <- c("estimate", "stderror", "zvalue", "pvalue")
+ggplot(tulkunlikans, aes(x=estimate, y=exp(estimate)/(1+exp(estimate)))) + geom_line()
+
+ggplot(data.frame(x = c(-4, 4)), aes(x = x)) + geom_vline(xintercept = -1.5, linetype="dotted", color="blue") + geom_vline(xintercept = 1.5, linetype="dotted", color="blue")+ geom_text(aes(x=-1.5, y=0.4, label="a")) +
+  geom_text(aes(x=1.5, y=0.4, label="b")) +
+stat_function(fun = dnorm) + labs(title = "Þéttifall", y="f"~(theta), x=""~theta) 
+```
+
+```{r}
+likur <- exp(glmer.fit2.coef$`Mat á stika`+5.4363264-2.9221)/(1+exp(glmer.fit2.coef$`Mat á stika`+5.4363264-2.9221))
+tulkun <- cbind(likur,glmer.fit2.coef)
+tulkun <- tulkun[2:8,1:2]
+
+colnames(tulkun) <- c("Líkur", "Mat á stika")
+tulkun %>% kable(digits = 2, booktabs = T, 
+                    caption = "Túlkun", 
+                    linesep = '') %>% 
+  kable_styling(full_width = T, font = 7) %>% 
+  row_spec(row = 0, bold = T)
+
+```
+
+```{r message=FALSE, warning=FALSE}
+kable(glmer.fit2.coef[,-1]) %>% 
+  kable_styling(latex_options = "hold_position") %>%
+  row_spec(row = 0, bold = T)
+```
+
+```{r}
+vigur <- glmer.fit.coef$Gagnalíkindahlutfall/(1+glmer.fit.coef$Gagnalíkindahlutfall)
+```
+
+```{r}
+summary(glmer.fit2)
+```
+
+exp(2.5142)/(1+exp(2.5142))
+(exp(5.4363+1.9637-2.9221)/(1+exp(4.4779)))/(exp(2.5142)/(1+exp(2.5142)))
+
+\newpage 
+
+# Heimildir
+*Á eftir að setja á rétt form...Verður á réttu formi og með tilvísunum á réttum stöðum þegar ég skila í .tex í næstu skilum*
+
+https://skemman.is/bitstream/1946/20776/1/ahj_phd_prenta.pdf   
+
+https://arxiv.org/pdf/2109.13658.pdf
+
+http://educationinasuitcase.com 
+
+https://mathscinet.ams.org/mathscinet/index.html 
+Hægt að sækja BibTex form hér ef ég er á HÍ netinu. 
+
+Heimildir m.a. https://tutor-web.net/tw-info/news-1/back-to-kenya-education-in-a-suitcase 
+www.patreon.com/eias
+
+pillar tutor web, smiley coin, 
+government policy 100% transition to secondary school. https://www.youtube.com/watch?v=DTi4P59xJkU 
+
+nótur frá Birgi fyrir logistic regression - sem hann gerði fyrir HLT
+
+https://skemman.is/bitstream/1946/20776/1/ahj_phd_prenta.pdf
+
+https://www.sciencedirect.com/science/article/pii/S0360131503001246?via%3Dihub
+
+https://ledger.pitt.edu/ojs/ledger/article/view/103
+
+https://library.iated.org/view/STEFANSSON2021LEA
+
+https://skemman.is/bitstream/1946/35759/1/_main.pdf
+
+http://www.utstat.toronto.edu/~brunner/oldclass/2201s11/readings/glmbook.pdf
+
+https://hastie.su.domains/ISLR2/ISLRv2_website.pdf 
+
+
+```{r}
+data.frame(Breyta = c("correct",
+                      "studentId", 
+                      "library", 
+                      "title", 
+                      "drill", 
+                      "numberAced",
+                      "numberAcedFlokkur"), 
+           Skýring = c("Rétt/rangt svar við stöðuprófsspurningu",
+                       "Auðkenni nemanda", 
+                       "Heiti bókasafns sem hýsir spjaltölvu", 
+                       "Númer stöðuprófsspurnignar",
+                       "Heiti æfingasetts sem nemandi vann í þegar stöðuprófsspurning birtist", 
+                       "Fjöldi æfingasetta sem nemandi hefur þegar náð 9,75 í",
+                       "Flokkar nemendur eftir því hve mörgum æfingasettum nemandi hefur lokið")) %>% 
+  kable(digits = 4, booktabs = T, 
+     caption = "Breytur í gagnasetti", 
+     linesep = '') %>% 
+  kable_styling(latex_options = "hold_position") %>%
+  row_spec(row = 0, bold = T)
+```
